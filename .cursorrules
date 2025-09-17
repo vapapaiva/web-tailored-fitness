@@ -1,0 +1,135 @@
+# Web Tailored Fitness - Cursor Rules
+
+## Project Overview
+This is a fitness application built with:
+- **Frontend**: Vite + React 18 + TypeScript
+- **Styling**: Tailwind CSS + shadcn/ui components
+- **Build Tool**: Vite
+- **Package Manager**: npm
+
+## 🔧 Technology Stack
+- **React 18** with TypeScript for type safety
+- **Vite** for fast development and building
+- **Tailwind CSS** for utility-first styling
+- **shadcn/ui** for beautiful, accessible UI components
+- **ESLint** for code linting
+
+## 📋 Documentation Requirements
+
+### CRITICAL: All implementations must be documented
+When implementing ANY feature, you MUST:
+
+1. **Update this .cursorrules file** with:
+   - Feature description
+   - File locations where the feature is implemented
+   - Dependencies added
+   - API endpoints created (if any)
+   - Components created/modified
+
+2. **Add inline documentation** in code:
+   - JSDoc comments for all functions/components
+   - Clear variable and function names
+   - Type annotations for all TypeScript interfaces/types
+
+3. **Maintain the Feature Registry** below with:
+   - Feature name
+   - Implementation files
+   - Status (In Progress/Complete)
+   - Dependencies
+
+## 📁 Project Structure
+```
+src/
+├── components/          # React components
+│   └── ui/             # shadcn/ui components
+├── lib/                # Utility functions
+│   └── utils.ts        # cn() utility for className merging
+├── App.tsx             # Main application component
+├── main.tsx            # Application entry point
+└── index.css           # Global styles with Tailwind + shadcn/ui theme
+```
+
+## 🎨 Styling Guidelines
+- Use Tailwind CSS utility classes
+- Use shadcn/ui components when possible
+- Follow the design system defined in `src/index.css`
+- Use CSS variables for theming (light/dark mode support)
+
+## 🧩 Component Guidelines
+- All components should be TypeScript
+- Use functional components with hooks
+- Export components as default when single export
+- Use named exports for multiple utilities
+- Follow shadcn/ui patterns for custom components
+
+## 📦 Adding New Dependencies
+When adding dependencies:
+1. Document the reason in this file
+2. Update the Technology Stack section
+3. Note any configuration changes needed
+
+## 🚀 Development Commands
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run preview      # Preview production build
+npm run lint         # Run ESLint
+```
+
+---
+
+# 📊 FEATURE REGISTRY
+*Keep this updated with every feature implementation*
+
+## ✅ Completed Features
+
+### 1. Project Setup & Configuration
+- **Files**: `package.json`, `vite.config.ts`, `tsconfig.app.json`, `tailwind.config.js`
+- **Description**: Initial Vite React TypeScript project with shadcn/ui integration
+- **Components**: Basic App component with shadcn/ui Button
+- **Dependencies**: 
+  - React 18 + TypeScript
+  - Vite 7.x
+  - Tailwind CSS + PostCSS + Autoprefixer
+  - shadcn/ui components (button)
+  - tailwindcss-animate, class-variance-authority, clsx, tailwind-merge
+
+### 2. Styling System
+- **Files**: `src/index.css`, `tailwind.config.js`, `components.json`
+- **Description**: Complete Tailwind CSS + shadcn/ui theming system with light/dark mode support
+- **Features**: CSS custom properties, responsive design, accessibility-first components
+
+### 3. Development Environment
+- **Files**: `.cursorrules`, `components.json`, path aliases in configs
+- **Description**: Configured development environment with proper TypeScript path mapping (@/* aliases)
+- **Tools**: ESLint, shadcn/ui CLI integration
+
+---
+
+## 🔄 In Progress Features
+*None currently*
+
+---
+
+## 📝 Planned Features
+*To be added as development progresses*
+
+---
+
+## 🐛 Known Issues
+*None currently*
+
+---
+
+## 📚 Additional Notes
+- The project uses absolute imports with `@/` prefix for src directory
+- All shadcn/ui components are installed in `src/components/ui/`
+- The project is configured for both light and dark themes
+- Git repository is connected to: git@github.com:vapapaiva/web-tailored-fitness.git
+
+## 🔄 Last Updated
+Initial setup completed on 2025-09-17
+
+---
+
+**Remember**: Every time you implement a feature, update this file with the details!
