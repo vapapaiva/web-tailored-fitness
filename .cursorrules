@@ -104,6 +104,56 @@ npm run lint         # Run ESLint
 - **Description**: Configured development environment with proper TypeScript path mapping (@/* aliases)
 - **Tools**: ESLint, shadcn/ui CLI integration
 
+### 4. Firebase Integration & Authentication
+- **Files**: `src/lib/firebase.ts`, `src/stores/authStore.ts`
+- **Description**: Complete Firebase setup with Google OAuth authentication
+- **Features**: User authentication, Firestore integration, real-time user data sync
+- **Dependencies**: Firebase SDK v10, Google Auth Provider
+
+### 5. Dynamic Profile System
+- **Files**: `src/stores/profileConfigStore.ts`, `src/types/profile.ts`
+- **Description**: Dynamic profile configuration system using Firebase Remote Config
+- **Features**: Fetches config from Firebase Remote Config (`profile_config` parameter), type-safe profile fields, validation system
+- **Components**: Support for text, number, single/multiple choice, stepper (slider) fields
+- **Note**: `src/profile-config.json` is only an example - actual config comes from Firebase Remote Config
+
+### 6. Onboarding Flow
+- **Files**: `src/components/onboarding/OnboardingFlow.tsx`, `src/components/forms/FormField.tsx`
+- **Description**: Step-by-step onboarding with one question per screen
+- **Features**: Progress tracking, field validation, navigation (back/forward), dynamic form rendering
+- **Integration**: Saves to user profile in Firestore, redirects to main app on completion
+
+### 7. Profile Management
+- **Files**: `src/pages/ProfilePage.tsx`
+- **Description**: Complete profile editing interface showing all fields on one screen
+- **Features**: Real-time editing, validation, custom options for choice fields, responsive design
+- **Integration**: Syncs with Firestore, supports all field types from configuration
+
+### 8. Application Layout & Navigation
+- **Files**: `src/components/layout/AppLayout.tsx`, `src/App.tsx`
+- **Description**: Complete app structure with routing and navigation
+- **Features**: Responsive header/nav, user menu, theme switcher, protected routes
+- **Pages**: Fitness Plan, Progress, Profile, Testing utilities
+- **Dependencies**: React Router v6
+
+### 9. Theme System
+- **Files**: `src/stores/themeStore.ts`, updated `src/index.css`
+- **Description**: Complete light/dark/system theme switching with persistence
+- **Features**: System theme detection, user preference storage in profile, seamless switching
+- **Integration**: Syncs theme preference to user profile in Firestore
+
+### 10. State Management
+- **Files**: `src/stores/` directory (authStore, themeStore, profileConfigStore)
+- **Description**: Reactive state management with Zustand
+- **Features**: Real-time Firestore synchronization, automatic cleanup, type-safe stores
+- **Dependencies**: Zustand with subscribeWithSelector middleware
+
+### 11. Testing Utilities
+- **Files**: `src/pages/TestingPage.tsx`
+- **Description**: Development utilities for testing and debugging
+- **Features**: Reset onboarding, clear profile data, user state inspection
+- **Purpose**: Development and QA testing support
+
 ---
 
 ## 🔄 In Progress Features
@@ -112,7 +162,10 @@ npm run lint         # Run ESLint
 ---
 
 ## 📝 Planned Features
-*To be added as development progresses*
+- **Fitness Plan Generation**: AI-powered workout plan creation based on user profile
+- **Progress Tracking**: Workout logging, progress photos, measurements, analytics
+- **Exercise Database**: Comprehensive exercise library with instructions and videos
+- **Social Features**: Community challenges, workout sharing, progress comparison
 
 ---
 
@@ -127,8 +180,15 @@ npm run lint         # Run ESLint
 - The project is configured for both light and dark themes
 - Git repository is connected to: git@github.com:vapapaiva/web-tailored-fitness.git
 
+## 🔥 Firebase Dependencies
+**CRITICAL**: The app relies entirely on Firebase Remote Config for configuration:
+- **Profile Configuration**: `profile_config` parameter in Firebase Remote Config
+- **OpenAI API Key**: `openai_api_key` parameter in Firebase Remote Config  
+- **Fitness Plan Prompts**: `prompts_fitness_plan_generation` parameter in Firebase Remote Config
+- **Local JSON files**: Are examples only - actual config comes from Firebase
+
 ## 🔄 Last Updated
-Initial setup completed on 2025-09-17
+Complete authentication and profile system implemented on 2025-09-17
 
 ---
 

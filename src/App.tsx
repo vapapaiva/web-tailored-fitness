@@ -1,34 +1,112 @@
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthStore } from '@/stores/authStore';
+import { useProfileConfigStore } from '@/stores/profileConfigStore';
+import { useThemeStore } from '@/stores/themeStore';
 
+// Components
+import { SignInPage } from '@/components/auth/SignInPage';
+import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
+import { AppLayout } from '@/components/layout/AppLayout';
+
+// Pages
+import { FitnessPlanPage } from '@/pages/FitnessPlanPage';
+import { ProgressPage } from '@/pages/ProgressPage';
+import { ProfilePage } from '@/pages/ProfilePage';
+import { TestingPage } from '@/pages/TestingPage';
+
+/**
+ * Main App component with routing and authentication logic
+ */
 function App() {
-  const [count, setCount] = useState(0)
+  const { user, loading: authLoading, initialize: initializeAuth } = useAuthStore();
+  const { fetchConfig } = useProfileConfigStore();
+  const { initialize: initializeTheme } = useThemeStore();
 
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center space-y-8">
-          <h1 className="text-4xl font-bold tracking-tight">
-            Web Tailored Fitness
-          </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Your personalized fitness journey starts here. Built with Vite, React, TypeScript, and shadcn/ui.
-          </p>
-          <div className="space-y-4">
-            <Button 
-              onClick={() => setCount((count) => count + 1)}
-              size="lg"
-            >
-              Count is {count}
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              Click the button to test the setup!
-            </p>
-          </div>
+  // Initialize stores on app start
+  useEffect(() => {
+    const cleanupAuth = initializeAuth();
+    initializeTheme();
+    
+    // Fetch profile configuration
+    fetchConfig();
+
+    return cleanupAuth;
+  }, [initializeAuth, initializeTheme, fetchConfig]);
+
+  // Show loading screen while initializing
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto" />
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
-    </div>
-  )
+    );
+  }
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Public routes */}
+        <Route 
+          path="/" 
+          element={
+            user ? (
+              user.onboardingCompleted ? (
+                <Navigate to="/app" replace />
+              ) : (
+                <Navigate to="/onboarding" replace />
+              )
+            ) : (
+              <SignInPage />
+            )
+          } 
+        />
+        
+        {/* Onboarding route */}
+        <Route 
+          path="/onboarding" 
+          element={
+            user ? (
+              user.onboardingCompleted ? (
+                <Navigate to="/app" replace />
+              ) : (
+                <OnboardingFlow />
+              )
+            ) : (
+              <Navigate to="/" replace />
+            )
+          } 
+        />
+        
+        {/* Protected app routes */}
+        <Route 
+          path="/app" 
+          element={
+            user ? (
+              user.onboardingCompleted ? (
+                <AppLayout />
+              ) : (
+                <Navigate to="/onboarding" replace />
+              )
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        >
+          <Route index element={<FitnessPlanPage />} />
+          <Route path="progress" element={<ProgressPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route path="testing" element={<TestingPage />} />
+        </Route>
+        
+        {/* Catch all route */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;
