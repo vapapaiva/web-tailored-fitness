@@ -74,6 +74,7 @@ function parseSetLine(line: string): ParsedSet | null {
       if (i === 0) {
         // Sets x Reps x Weight
         return {
+          sets: parseInt(match[1]),
           reps: parseInt(match[2]),
           weight: parseFloat(match[3]),
           unit: match[4].toLowerCase(),
@@ -81,11 +82,13 @@ function parseSetLine(line: string): ParsedSet | null {
       } else if (i === 1) {
         // Sets x Reps
         return {
+          sets: parseInt(match[1]),
           reps: parseInt(match[2]),
         };
       } else if (i === 2) {
         // Duration
         return {
+          sets: 1,
           reps: 1,
           duration: convertToSeconds(parseFloat(match[1]), match[2]),
           unit: 'seconds',
@@ -93,6 +96,7 @@ function parseSetLine(line: string): ParsedSet | null {
       } else if (i === 3) {
         // Distance
         return {
+          sets: 1,
           reps: 1,
           distance: parseFloat(match[1]),
           unit: normalizeDistanceUnit(match[2]),
@@ -124,13 +128,25 @@ function convertToSeconds(value: number, unit: string): number {
  * Converts parsed exercises to the full Exercise format required by the fitness plan
  */
 export function convertParsedToExercise(parsed: ParsedExercise, exerciseId: string): Exercise {
-  const sets: ExerciseSet[] = parsed.sets.map(parsedSet => ({
-    reps: parsedSet.reps,
-    weight: parsedSet.weight,
-    duration: parsedSet.duration,
-    restTime: 90, // Default rest time
-    notes: parsedSet.distance ? `${parsedSet.distance}${parsedSet.unit}` : '',
-  }));
+  const sets: ExerciseSet[] = [];
+  
+  parsed.sets.forEach(parsedSet => {
+    // Create the number of sets specified in the parsed data
+    const setsCount = parsedSet.sets || 1;
+    
+    for (let i = 0; i < setsCount; i++) {
+      sets.push({
+        reps: parsedSet.reps,
+        weight: parsedSet.weight,
+        duration: parsedSet.duration,
+        restTime: 90, // Default rest time
+        notes: parsedSet.distance ? `${parsedSet.distance}${parsedSet.unit}` : '',
+        volumeType: parsedSet.duration ? 'duration' : 
+                   parsedSet.distance ? 'distance' :
+                   parsedSet.weight !== undefined ? 'sets-reps-weight' : 'sets-reps',
+      });
+    }
+  });
 
   // If no sets were parsed, create a default set
   if (sets.length === 0) {
@@ -138,6 +154,7 @@ export function convertParsedToExercise(parsed: ParsedExercise, exerciseId: stri
       reps: 10,
       restTime: 90,
       notes: '',
+      volumeType: 'sets-reps',
     });
   }
 

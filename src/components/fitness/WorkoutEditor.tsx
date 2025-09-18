@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Workout, Exercise, ExerciseSet } from '@/types/fitness';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -74,6 +74,32 @@ export function WorkoutEditor({ workout, isOpen, onClose, onSave }: WorkoutEdito
         finalWorkout.exercises = exercises;
       }
 
+      // Validation: Ensure workout has at least 1 exercise
+      if (finalWorkout.exercises.length === 0) {
+        alert('Please add at least one exercise to the workout.');
+        return;
+      }
+
+      // Validation: Ensure all exercises have valid volume data
+      for (const exercise of finalWorkout.exercises) {
+        if (exercise.sets.length === 0) {
+          alert(`Exercise "${exercise.name}" must have at least one set.`);
+          return;
+        }
+
+        // Check if any sets have empty volume data
+        for (const set of exercise.sets) {
+          const hasReps = set.reps && set.reps > 0;
+          const hasDuration = set.duration && set.duration > 0;
+          const hasDistance = set.notes && set.notes.match(/\d+(?:\.\d+)?(km|mi|m)/);
+
+          if (!hasReps && !hasDuration && !hasDistance) {
+            alert(`Exercise "${exercise.name}" has sets with no volume data. Please fill in reps, duration, or distance.`);
+            return;
+          }
+        }
+      }
+
       onSave(finalWorkout);
       onClose();
     } catch (error) {
@@ -122,6 +148,12 @@ export function WorkoutEditor({ workout, isOpen, onClose, onSave }: WorkoutEdito
   };
 
   const deleteExercise = (exerciseId: string) => {
+    // Validation: Prevent deleting the last exercise
+    if (editedWorkout.exercises.length <= 1) {
+      alert('A workout must have at least one exercise. Add another exercise before deleting this one.');
+      return;
+    }
+
     setEditedWorkout(prev => ({
       ...prev,
       exercises: prev.exercises.filter(ex => ex.id !== exerciseId),
@@ -132,18 +164,34 @@ export function WorkoutEditor({ workout, isOpen, onClose, onSave }: WorkoutEdito
 
   // Volume row management
   const getVolumeRows = (exercise: Exercise) => {
-    return groupSimilarSets(exercise.sets).map(group => ({
-      type: group.duration ? 'duration' : 
-            group.notes?.match(/\d+(?:\.\d+)?(km|mi|m)/) ? 'distance' :
-            group.weight ? 'sets-reps-weight' : 'sets-reps',
-      sets: group.count,
-      reps: group.reps,
-      weight: group.weight,
-      duration: group.duration,
-      distance: group.notes?.match(/(\d+(?:\.\d+)?)(km|mi|m)/)?.[1],
-      unit: group.notes?.match(/\d+(?:\.\d+)?(km|mi|m|kg|lb)/)?.[1] || 
-            (group.weight ? 'kg' : 'km'),
-    }));
+    return groupSimilarSets(exercise.sets).map((group) => {
+      // Try to get the stored volume type from the first set in the group
+      const firstSet = exercise.sets.find(set => 
+        set.weight === group.weight && 
+        set.reps === group.reps && 
+        set.duration === group.duration &&
+        set.notes === group.notes
+      );
+      
+      // Use stored volume type if available, otherwise detect from data
+      let volumeType = firstSet?.volumeType;
+      if (!volumeType) {
+        volumeType = group.duration ? 'duration' : 
+              group.notes?.match(/\d+(?:\.\d+)?(km|mi|m)/) ? 'distance' :
+              group.weight !== undefined ? 'sets-reps-weight' : 'sets-reps';
+      }
+      
+      return {
+        type: volumeType,
+        sets: group.count,
+        reps: group.reps,
+        weight: group.weight,
+        duration: group.duration,
+        distance: group.notes?.match(/(\d+(?:\.\d+)?)(km|mi|m)/)?.[1],
+        unit: group.notes?.match(/\d+(?:\.\d+)?(km|mi|m|kg|lb)/)?.[1] || 
+              (group.weight !== undefined ? 'kg' : 'km'),
+      };
+    });
   };
 
   const addVolumeRow = (exerciseId: string) => {
@@ -151,6 +199,7 @@ export function WorkoutEditor({ workout, isOpen, onClose, onSave }: WorkoutEdito
       reps: 10,
       restTime: 90,
       notes: '',
+      volumeType: 'sets-reps', // Default volume type for new rows
     };
 
     const exercise = editedWorkout.exercises.find(ex => ex.id === exerciseId);
@@ -178,15 +227,16 @@ export function WorkoutEditor({ workout, isOpen, onClose, onSave }: WorkoutEdito
         reps: updatedRow.reps || 1,
         restTime: 90,
         notes: '',
+        volumeType: updatedRow.type, // Store the user's volume type choice
       };
 
-      if (updatedRow.type === 'sets-reps-weight' && updatedRow.weight) {
-        newSet.weight = updatedRow.weight;
-      } else if (updatedRow.type === 'duration' && updatedRow.duration) {
-        newSet.duration = updatedRow.duration;
+      if (updatedRow.type === 'sets-reps-weight') {
+        newSet.weight = updatedRow.weight || 0;
+      } else if (updatedRow.type === 'duration') {
+        newSet.duration = updatedRow.duration || 60;
         newSet.reps = 1; // Keep reps as 1 for data structure consistency
-      } else if (updatedRow.type === 'distance' && updatedRow.distance) {
-        newSet.notes = `${updatedRow.distance}${updatedRow.unit}`;
+      } else if (updatedRow.type === 'distance') {
+        newSet.notes = `${updatedRow.distance || 0}${updatedRow.unit || 'km'}`;
         newSet.reps = 1;
       }
 
@@ -210,6 +260,13 @@ export function WorkoutEditor({ workout, isOpen, onClose, onSave }: WorkoutEdito
     if (!exercise) return;
 
     const volumeRows = getVolumeRows(exercise);
+    
+    // Validation: Prevent deleting the last volume row
+    if (volumeRows.length <= 1) {
+      alert('An exercise must have at least one volume row. Add another volume row before deleting this one.');
+      return;
+    }
+
     const currentRow = volumeRows[rowIndex];
     
     // Find the starting index for this row
@@ -403,6 +460,26 @@ function VolumeRow({ volumeRow, onUpdate, onDelete }: {
   onUpdate: (updatedRow: any) => void;
   onDelete: () => void;
 }) {
+  // Local state for input values to allow clearing while focused
+  const [localValues, setLocalValues] = React.useState({
+    sets: volumeRow.sets?.toString() || '',
+    reps: volumeRow.reps?.toString() || '',
+    weight: volumeRow.weight?.toString() || '',
+    duration: volumeRow.duration ? Math.round(volumeRow.duration / 60 * 100) / 100 : '',
+    distance: volumeRow.distance?.toString() || '',
+  });
+
+  // Update local values when volumeRow changes (e.g., from type change)
+  React.useEffect(() => {
+    setLocalValues({
+      sets: volumeRow.sets?.toString() || '',
+      reps: volumeRow.reps?.toString() || '',
+      weight: volumeRow.weight?.toString() || '',
+      duration: volumeRow.duration ? Math.round(volumeRow.duration / 60 * 100) / 100 : '',
+      distance: volumeRow.distance?.toString() || '',
+    });
+  }, [volumeRow]);
+
   const handleTypeChange = (newType: string) => {
     // Reset fields when changing type and set defaults
     let updatedRow = { ...volumeRow, type: newType };
@@ -418,6 +495,37 @@ function VolumeRow({ volumeRow, onUpdate, onDelete }: {
     }
     
     onUpdate(updatedRow);
+  };
+
+  // Helper function to handle input changes with local state
+  const handleInputChange = (field: string, value: string) => {
+    setLocalValues(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Helper function to handle blur with default values
+  const handleInputBlur = (field: string, defaultValue: number) => {
+    const currentValue = localValues[field as keyof typeof localValues];
+    const numericValue = parseFloat(currentValue);
+    
+    if (isNaN(numericValue) || numericValue <= 0) {
+      // Set default value and update both local state and parent
+      setLocalValues(prev => ({ ...prev, [field]: defaultValue.toString() }));
+      
+      if (field === 'duration') {
+        const seconds = Math.round(defaultValue * 60);
+        onUpdate({ ...volumeRow, [field]: seconds });
+      } else {
+        onUpdate({ ...volumeRow, [field]: defaultValue });
+      }
+    } else {
+      // Update parent with the valid value
+      if (field === 'duration') {
+        const seconds = Math.round(numericValue * 60);
+        onUpdate({ ...volumeRow, [field]: seconds });
+      } else {
+        onUpdate({ ...volumeRow, [field]: numericValue });
+      }
+    }
   };
 
   return (
@@ -447,8 +555,9 @@ function VolumeRow({ volumeRow, onUpdate, onDelete }: {
           <Label className="text-xs">Sets</Label>
           <Input
             type="number"
-            value={volumeRow.sets || 3}
-            onChange={(e) => onUpdate({ ...volumeRow, sets: parseInt(e.target.value) || 1 })}
+            value={localValues.sets}
+            onChange={(e) => handleInputChange('sets', e.target.value)}
+            onBlur={() => handleInputBlur('sets', 3)}
             className="h-8 text-xs"
             min="1"
           />
@@ -461,8 +570,9 @@ function VolumeRow({ volumeRow, onUpdate, onDelete }: {
           <Label className="text-xs">Reps</Label>
           <Input
             type="number"
-            value={volumeRow.reps || 10}
-            onChange={(e) => onUpdate({ ...volumeRow, reps: parseInt(e.target.value) || 1 })}
+            value={localValues.reps}
+            onChange={(e) => handleInputChange('reps', e.target.value)}
+            onBlur={() => handleInputBlur('reps', 10)}
             className="h-8 text-xs"
             min="1"
           />
@@ -475,8 +585,9 @@ function VolumeRow({ volumeRow, onUpdate, onDelete }: {
           <Label className="text-xs">Weight</Label>
           <Input
             type="number"
-            value={volumeRow.weight || 20}
-            onChange={(e) => onUpdate({ ...volumeRow, weight: parseFloat(e.target.value) || 0 })}
+            value={localValues.weight}
+            onChange={(e) => handleInputChange('weight', e.target.value)}
+            onBlur={() => handleInputBlur('weight', 20)}
             className="h-8 text-xs"
             step="0.5"
             min="0"
@@ -509,12 +620,9 @@ function VolumeRow({ volumeRow, onUpdate, onDelete }: {
           <Label className="text-xs">Duration (min)</Label>
           <Input
             type="number"
-            value={volumeRow.duration ? Math.round(volumeRow.duration / 60 * 100) / 100 : 1}
-            onChange={(e) => {
-              const minutes = parseFloat(e.target.value) || 0;
-              const seconds = Math.round(minutes * 60);
-              onUpdate({ ...volumeRow, duration: seconds });
-            }}
+            value={localValues.duration}
+            onChange={(e) => handleInputChange('duration', e.target.value)}
+            onBlur={() => handleInputBlur('duration', 1)}
             className="h-8 text-xs"
             step="0.25"
             min="0.25"
@@ -528,8 +636,9 @@ function VolumeRow({ volumeRow, onUpdate, onDelete }: {
           <Label className="text-xs">Distance</Label>
           <Input
             type="number"
-            value={volumeRow.distance || 5}
-            onChange={(e) => onUpdate({ ...volumeRow, distance: parseFloat(e.target.value) || 0 })}
+            value={localValues.distance}
+            onChange={(e) => handleInputChange('distance', e.target.value)}
+            onBlur={() => handleInputBlur('distance', 5)}
             className="h-8 text-xs"
             step="0.1"
             min="0"

@@ -8,6 +8,7 @@ export interface ExerciseSet {
   duration?: number;
   restTime: number;
   notes?: string;
+  volumeType?: 'sets-reps' | 'sets-reps-weight' | 'duration' | 'distance';
 }
 
 export interface Exercise {
@@ -145,6 +146,7 @@ export interface WeeklyProgress {
  * Exercise parsing types
  */
 export interface ParsedSet {
+  sets: number;
   reps: number;
   weight?: number;
   duration?: number;
