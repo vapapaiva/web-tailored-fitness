@@ -1,5 +1,5 @@
 /**
- * Mutation tracking for optimistic updates
+ * Mutation tracking for optimistic updates and conflict resolution
  * Based on expert's recommendation for handling concurrent edits
  */
 

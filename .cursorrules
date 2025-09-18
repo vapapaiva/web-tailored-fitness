@@ -55,6 +55,61 @@ src/
 - Follow the design system defined in `src/index.css`
 - Use CSS variables for theming (light/dark mode support)
 
+## 🔄 Real-Time Sync Pattern (CRITICAL)
+
+### When to Use This Pattern
+**ALWAYS use this pattern when implementing features that:**
+- ✅ Update data that needs to sync across multiple devices
+- ✅ Allow user editing/creation/deletion of data
+- ✅ Require real-time collaboration or multi-device support
+- ✅ Need optimistic updates for smooth UX
+
+### Pattern Implementation
+**Follow this exact pattern for all data updates:**
+
+1. **Immediate Local State Update** (for instant UI feedback)
+2. **Silent Firebase Sync** (for data persistence)
+3. **Real-time Listeners** (for multi-device sync)
+4. **Mutation Tracking** (to prevent echo re-applies)
+5. **Conflict Resolution** (for concurrent edits)
+
+### Required Files
+- `src/lib/mutationTracker.ts` - Mutation tracking utilities
+- `src/lib/lexoRank.ts` - Proper ordering for drag & drop
+- Real-time listeners with `onSnapshot` in stores
+- Silent update functions (no loading state)
+
+### Quick Reference
+- **Full Documentation**: `src/docs/NO_BLINKING_UPDATE_PATTERN.md`
+- **Quick Reference**: `src/docs/REAL_TIME_SYNC_QUICK_REFERENCE.md`
+- **Example Implementation**: See `src/stores/fitnessPlanStore.ts`
+
+### Example Implementation
+```typescript
+// 1. IMMEDIATE: Update local state for smooth UX
+useFitnessPlanStore.setState({ currentPlan: updatedPlan });
+
+// 2. ASYNC: Persist to Firebase silently (no store updates, no re-renders)
+await updatePlanSilently(updatedPlan);
+
+// 3. REAL-TIME: Listen for changes from other devices
+const unsubscribe = onSnapshot(planDocRef, (doc) => {
+  // Check if this is our own mutation (prevent echo re-applies)
+  if (!isOwnMutation(serverData.lastMutation)) {
+    set({ currentPlan: serverData });
+  }
+});
+```
+
+### When NOT to Use This Pattern
+- ❌ Static data that never changes
+- ❌ UI-only state (modals, toggles, etc.)
+- ❌ One-time operations (file uploads, etc.)
+
+**If unsure whether to use this pattern, ASK THE USER: "Does this feature need to sync across multiple devices or require real-time updates?"**
+
+**CRITICAL**: When implementing any data update feature, ALWAYS ask: "Should this feature sync across multiple devices? If yes, use the real-time sync pattern. If no, use simple local state management."
+
 ## 🧩 Component Guidelines
 - All components should be TypeScript
 - Use functional components with hooks
@@ -154,6 +209,32 @@ npm run lint         # Run ESLint
 - **Features**: Reset onboarding, clear profile data, user state inspection
 - **Purpose**: Development and QA testing support
 
+### 12. Fitness Plan System
+- **Files**: `src/components/fitness/`, `src/stores/fitnessPlanStore.ts`, `src/types/fitness.ts`
+- **Description**: Complete fitness plan generation, editing, and management system
+- **Features**: 
+  - AI-powered plan generation using OpenAI API
+  - Drag & drop workout scheduling
+  - Workout editing with text/UI modes
+  - Exercise management with volume tracking
+  - No-blinking UI updates with Firebase sync
+  - Optimistic updates for smooth UX
+- **Dependencies**: OpenAI API, Firebase Firestore, dnd-kit for drag & drop
+- **Architecture**: Follows expert frontend patterns for optimistic updates
+
+### 13. Real-Time Sync Pattern
+- **Files**: `src/docs/NO_BLINKING_UPDATE_PATTERN.md`, `src/lib/mutationTracker.ts`, `src/lib/lexoRank.ts`
+- **Description**: Comprehensive real-time sync architecture for multi-device support
+- **Features**: 
+  - Real-time listeners (`onSnapshot`) for instant multi-device sync
+  - Mutation tracking to prevent echo re-applies from own changes
+  - LexoRank for proper drag & drop ordering across devices
+  - Silent Firebase updates to prevent double re-renders
+  - Optimistic local state updates for instant UI feedback
+  - Conflict resolution for concurrent edits
+- **Benefits**: Multi-device sync, smooth UX, no data loss, professional collaboration
+- **Usage**: **MANDATORY** for all features that update data or require multi-device support
+
 ---
 
 ## 🔄 In Progress Features
@@ -189,6 +270,7 @@ npm run lint         # Run ESLint
 
 ## 🔄 Last Updated
 Complete authentication and profile system implemented on 2025-09-17
+Fitness plan system with no-blinking updates and Firebase sync implemented on 2025-09-17
 
 ---
 

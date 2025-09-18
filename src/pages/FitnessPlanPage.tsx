@@ -17,14 +17,20 @@ import { Dumbbell, User, Sparkles, AlertCircle } from 'lucide-react';
 export function FitnessPlanPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { currentPlan, loading, generating, error, generatePlan, loadPlan, clearError, approvePlan, updatePlanSilently } = useFitnessPlanStore();
+  const { currentPlan, loading, generating, error, generatePlan, loadPlan, clearError, approvePlan, updatePlanSilently, startRealtimeSync, stopRealtimeSync } = useFitnessPlanStore();
   const { fetchConfig } = useProfileConfigStore();
 
   // Load plan and config on component mount
   useEffect(() => {
     loadPlan();
     fetchConfig();
-  }, [loadPlan, fetchConfig]);
+    startRealtimeSync(); // Start real-time sync for multi-device support
+    
+    // Cleanup on unmount
+    return () => {
+      stopRealtimeSync();
+    };
+  }, [loadPlan, fetchConfig, startRealtimeSync, stopRealtimeSync]);
 
   const isProfileComplete = checkProfileCompleteness(user?.profile);
 

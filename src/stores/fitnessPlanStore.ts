@@ -7,13 +7,14 @@ import {
   updateDoc, 
   deleteDoc,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  onSnapshot
 } from 'firebase/firestore';
 import { getValue, fetchAndActivate } from 'firebase/remote-config';
 import { db, remoteConfig } from '@/lib/firebase';
 import { useAuthStore } from './authStore';
 import type { FitnessPlan, FitnessPlanResponse, GenerationRequest } from '@/types/fitness';
-import { createMutationTracker, generateMutationId, type MutationState } from '@/lib/mutationTracker';
+import { createMutationTracker, addPendingMutation, removePendingMutation, isOwnMutation, type MutationState } from '@/lib/mutationTracker';
 
 interface FitnessPlanState {
   currentPlan: FitnessPlan | null;
@@ -21,16 +22,19 @@ interface FitnessPlanState {
   generating: boolean;
   error: string | null;
   mutationState: MutationState;
+  realtimeUnsubscribe: (() => void) | null;
   
   // Actions
   generatePlan: (customPrompt?: string) => Promise<void>;
   approvePlan: () => Promise<void>;
   updatePlan: (planUpdate: Partial<FitnessPlan>) => Promise<void>;
   updatePlanSilently: (planUpdate: Partial<FitnessPlan>) => Promise<void>;
-  updateWorkoutWithRanking: (workoutId: string, updates: Partial<FitnessPlan['currentMicrocycle']['workouts'][0]>, newRank?: string) => Promise<void>;
+  updateWorkout: (workoutId: string, updates: Partial<FitnessPlan['currentMicrocycle']['workouts'][0]>, newRank?: string) => Promise<void>;
   moveWorkout: (workoutId: string, fromDay: number, toDay: number, newRank: string) => Promise<void>;
   deletePlan: () => Promise<void>;
   loadPlan: () => Promise<void>;
+  startRealtimeSync: () => void;
+  stopRealtimeSync: () => void;
   clearError: () => void;
 }
 
@@ -41,6 +45,7 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
     generating: false,
     error: null,
     mutationState: createMutationTracker(),
+    realtimeUnsubscribe: null,
 
     generatePlan: async (customPrompt?: string) => {
       const authStore = useAuthStore.getState();
@@ -318,7 +323,57 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
 
     clearError: () => set({ error: null }),
 
-    updateWorkoutWithRanking: async (workoutId: string, updates: Partial<FitnessPlan['currentMicrocycle']['workouts'][0]>, newRank?: string) => {
+    startRealtimeSync: () => {
+      const { realtimeUnsubscribe } = get();
+      const authStore = useAuthStore.getState();
+      const { user } = authStore;
+      
+      if (!user || realtimeUnsubscribe) return;
+
+      const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
+      
+      const unsubscribe = onSnapshot(planDocRef, (doc) => {
+        const { mutationState } = get();
+        
+        if (doc.exists()) {
+          const serverData = doc.data() as FitnessPlan;
+          
+          // Check if this is our own mutation (prevent echo re-applies)
+          const isOwn = serverData.currentMicrocycle?.workouts?.some(workout => 
+            workout.lastMutation && isOwnMutation(mutationState, workout.lastMutation)
+          );
+          
+          if (!isOwn) {
+            // This is a change from another device or external source
+            set({ currentPlan: serverData });
+          } else {
+            // This is our own mutation, clean up pending mutations
+            serverData.currentMicrocycle?.workouts?.forEach(workout => {
+              if (workout.lastMutation && isOwnMutation(mutationState, workout.lastMutation)) {
+                removePendingMutation(mutationState, workout.lastMutation.mutationId);
+              }
+            });
+          }
+        } else {
+          set({ currentPlan: null });
+        }
+      }, (error) => {
+        console.error('Realtime sync error:', error);
+        set({ error: 'Failed to sync with server' });
+      });
+
+      set({ realtimeUnsubscribe: unsubscribe });
+    },
+
+    stopRealtimeSync: () => {
+      const { realtimeUnsubscribe } = get();
+      if (realtimeUnsubscribe) {
+        realtimeUnsubscribe();
+        set({ realtimeUnsubscribe: null });
+      }
+    },
+
+    updateWorkout: async (workoutId: string, updates: Partial<FitnessPlan['currentMicrocycle']['workouts'][0]>, newRank?: string) => {
       const { currentPlan, mutationState } = get();
       const authStore = useAuthStore.getState();
       const { user } = authStore;
@@ -326,17 +381,23 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
       if (!user || !currentPlan) return;
 
       try {
+        // Generate mutation for tracking
+        const mutation = addPendingMutation(mutationState, {
+          type: 'workout_update',
+          data: { workoutId, updates }
+        });
+
         // 1. IMMEDIATE: Update local state optimistically
         const updatedWorkouts = currentPlan.currentMicrocycle.workouts.map(workout => 
           workout.id === workoutId 
             ? { 
                 ...workout, 
-                ...updates, 
+                ...updates,
                 rank: newRank || workout.rank,
                 lastMutation: {
                   clientId: mutationState.clientId,
-                  mutationId: generateMutationId(),
-                  timestamp: Date.now()
+                  mutationId: mutation.id,
+                  timestamp: mutation.timestamp
                 }
               }
             : workout
@@ -364,14 +425,14 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         await batch.commit();
 
       } catch (error) {
-        console.error('Failed to update workout with ranking:', error);
+        console.error('Failed to update workout:', error);
         set({ 
           error: error instanceof Error ? error.message : 'Failed to update workout'
         });
       }
     },
 
-    moveWorkout: async (workoutId: string, _fromDay: number, toDay: number, newRank: string) => {
+    moveWorkout: async (workoutId: string, fromDay: number, toDay: number, newRank: string) => {
       const { currentPlan, mutationState } = get();
       const authStore = useAuthStore.getState();
       const { user } = authStore;
@@ -379,6 +440,12 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
       if (!user || !currentPlan) return;
 
       try {
+        // Generate mutation for tracking
+        const mutation = addPendingMutation(mutationState, {
+          type: 'workout_move',
+          data: { workoutId, fromDay, toDay, newRank }
+        });
+
         // 1. IMMEDIATE: Update local state optimistically
         const updatedWorkouts = currentPlan.currentMicrocycle.workouts.map(workout => 
           workout.id === workoutId 
@@ -388,8 +455,8 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
                 rank: newRank,
                 lastMutation: {
                   clientId: mutationState.clientId,
-                  mutationId: generateMutationId(),
-                  timestamp: Date.now()
+                  mutationId: mutation.id,
+                  timestamp: mutation.timestamp
                 }
               }
             : workout
