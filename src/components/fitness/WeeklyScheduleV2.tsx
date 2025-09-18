@@ -28,6 +28,7 @@ import {
   Dumbbell
 } from 'lucide-react';
 import { useDragState } from '@/hooks/useDragState';
+import { generateRank } from '@/lib/lexoRank';
 
 interface WeeklyScheduleV2Props {
   workouts: Workout[];
@@ -309,6 +310,13 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
 
   const createNewWorkout = useCallback(() => {
     try {
+      // Generate rank for the new workout
+      const dayWorkouts = localWorkouts.filter(w => w.dayOfWeek === selectedDay);
+      const existingRanks = dayWorkouts.map(w => w.rank).filter(Boolean);
+      const newRank = existingRanks.length > 0 
+        ? generateRank(existingRanks[existingRanks.length - 1], '')
+        : 'M';
+
       const newWorkout: Workout = {
         id: `workout_${Date.now()}`,
         name: 'New Workout',
@@ -322,6 +330,7 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
           greenFlags: [],
           redFlags: [],
         },
+        rank: newRank,
       };
 
       const updatedWorkouts = [...localWorkouts, newWorkout];

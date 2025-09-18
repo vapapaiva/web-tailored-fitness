@@ -41,6 +41,14 @@ export interface Workout {
   value: string;
   exercises: Exercise[];
   checkIns: WorkoutCheckIns;
+  // Ranking system for drag & drop
+  rank: string;
+  // Mutation tracking
+  lastMutation?: {
+    clientId: string;
+    mutationId: string;
+    timestamp: number;
+  };
 }
 
 export interface Microcycle {

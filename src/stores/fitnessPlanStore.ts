@@ -6,24 +6,29 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc,
-  serverTimestamp 
+  serverTimestamp,
+  writeBatch
 } from 'firebase/firestore';
 import { getValue, fetchAndActivate } from 'firebase/remote-config';
 import { db, remoteConfig } from '@/lib/firebase';
 import { useAuthStore } from './authStore';
 import type { FitnessPlan, FitnessPlanResponse, GenerationRequest } from '@/types/fitness';
+import { createMutationTracker, generateMutationId, type MutationState } from '@/lib/mutationTracker';
 
 interface FitnessPlanState {
   currentPlan: FitnessPlan | null;
   loading: boolean;
   generating: boolean;
   error: string | null;
+  mutationState: MutationState;
   
   // Actions
   generatePlan: (customPrompt?: string) => Promise<void>;
   approvePlan: () => Promise<void>;
   updatePlan: (planUpdate: Partial<FitnessPlan>) => Promise<void>;
   updatePlanSilently: (planUpdate: Partial<FitnessPlan>) => Promise<void>;
+  updateWorkoutWithRanking: (workoutId: string, updates: Partial<FitnessPlan['currentMicrocycle']['workouts'][0]>, newRank?: string) => Promise<void>;
+  moveWorkout: (workoutId: string, fromDay: number, toDay: number, newRank: string) => Promise<void>;
   deletePlan: () => Promise<void>;
   loadPlan: () => Promise<void>;
   clearError: () => void;
@@ -35,6 +40,7 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
     loading: false,
     generating: false,
     error: null,
+    mutationState: createMutationTracker(),
 
     generatePlan: async (customPrompt?: string) => {
       const authStore = useAuthStore.getState();
@@ -311,6 +317,112 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
     },
 
     clearError: () => set({ error: null }),
+
+    updateWorkoutWithRanking: async (workoutId: string, updates: Partial<FitnessPlan['currentMicrocycle']['workouts'][0]>, newRank?: string) => {
+      const { currentPlan, mutationState } = get();
+      const authStore = useAuthStore.getState();
+      const { user } = authStore;
+      
+      if (!user || !currentPlan) return;
+
+      try {
+        // 1. IMMEDIATE: Update local state optimistically
+        const updatedWorkouts = currentPlan.currentMicrocycle.workouts.map(workout => 
+          workout.id === workoutId 
+            ? { 
+                ...workout, 
+                ...updates, 
+                rank: newRank || workout.rank,
+                lastMutation: {
+                  clientId: mutationState.clientId,
+                  mutationId: generateMutationId(),
+                  timestamp: Date.now()
+                }
+              }
+            : workout
+        );
+
+        const updatedPlan = {
+          ...currentPlan,
+          currentMicrocycle: {
+            ...currentPlan.currentMicrocycle,
+            workouts: updatedWorkouts,
+          },
+        };
+
+        set({ currentPlan: updatedPlan });
+
+        // 2. ASYNC: Persist to Firebase with batching
+        const batch = writeBatch(db);
+        const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
+        
+        batch.update(planDocRef, {
+          [`currentMicrocycle.workouts`]: updatedWorkouts,
+          updatedAt: serverTimestamp(),
+        });
+
+        await batch.commit();
+
+      } catch (error) {
+        console.error('Failed to update workout with ranking:', error);
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to update workout'
+        });
+      }
+    },
+
+    moveWorkout: async (workoutId: string, _fromDay: number, toDay: number, newRank: string) => {
+      const { currentPlan, mutationState } = get();
+      const authStore = useAuthStore.getState();
+      const { user } = authStore;
+      
+      if (!user || !currentPlan) return;
+
+      try {
+        // 1. IMMEDIATE: Update local state optimistically
+        const updatedWorkouts = currentPlan.currentMicrocycle.workouts.map(workout => 
+          workout.id === workoutId 
+            ? { 
+                ...workout, 
+                dayOfWeek: toDay,
+                rank: newRank,
+                lastMutation: {
+                  clientId: mutationState.clientId,
+                  mutationId: generateMutationId(),
+                  timestamp: Date.now()
+                }
+              }
+            : workout
+        );
+
+        const updatedPlan = {
+          ...currentPlan,
+          currentMicrocycle: {
+            ...currentPlan.currentMicrocycle,
+            workouts: updatedWorkouts,
+          },
+        };
+
+        set({ currentPlan: updatedPlan });
+
+        // 2. ASYNC: Persist to Firebase with batching
+        const batch = writeBatch(db);
+        const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
+        
+        batch.update(planDocRef, {
+          [`currentMicrocycle.workouts`]: updatedWorkouts,
+          updatedAt: serverTimestamp(),
+        });
+
+        await batch.commit();
+
+      } catch (error) {
+        console.error('Failed to move workout:', error);
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to move workout'
+        });
+      }
+    },
   }))
 );
 
