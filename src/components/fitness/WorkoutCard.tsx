@@ -9,7 +9,8 @@ import {
   Clock, 
   Play, 
   CheckCircle, 
-  Edit3
+  Edit3,
+  RotateCcw
 } from 'lucide-react';
 
 interface WorkoutCardProps {
@@ -17,6 +18,7 @@ interface WorkoutCardProps {
   onEdit: (workout: Workout) => void;
   onStart: (workout: Workout) => void;
   onComplete: (workout: Workout) => void;
+  onReset: (workout: Workout) => void;
   isEditable: boolean;
 }
 
@@ -27,6 +29,7 @@ export const WorkoutCard = React.memo(function WorkoutCard({
   onEdit, 
   onStart, 
   onComplete, 
+  onReset,
   isEditable 
 }: WorkoutCardProps) {
   const {
@@ -94,13 +97,33 @@ export const WorkoutCard = React.memo(function WorkoutCard({
     };
   }, [clickTimeout]);
 
+  // Status-based styling with theme support
+  const getStatusStyling = () => {
+    switch (workout.status) {
+      case 'completed':
+        return {
+          cardClass: 'border-green-500/20 bg-green-500/5 dark:border-green-400/20 dark:bg-green-400/5',
+          statusBadge: { variant: 'default' as const, className: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-200 dark:border-green-700' },
+          icon: <CheckCircle className="h-3 w-3 text-green-600 dark:text-green-400" />
+        };
+      default: // 'planned'
+        return {
+          cardClass: 'border-border bg-card',
+          statusBadge: { variant: 'secondary' as const, className: '' },
+          icon: <Clock className="h-3 w-3 text-muted-foreground" />
+        };
+    }
+  };
+
+  const statusStyling = getStatusStyling();
+
   return (
     <Card
       ref={setNodeRef}
       style={style}
       className={`cursor-pointer transition-all hover:shadow-md ${
         isDragging ? 'shadow-lg' : ''
-      }`}
+      } ${statusStyling.cardClass}`}
       {...attributes}
       {...listeners}
       onClick={handleDragAreaClick}
@@ -109,18 +132,32 @@ export const WorkoutCard = React.memo(function WorkoutCard({
       <CardContent className="p-3">
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm truncate">{workout.name}</h4>
-            <div className="flex items-center space-x-2 mt-1">
+            <div className="flex items-center space-x-2 mb-1">
+              <h4 className="font-medium text-sm truncate">{workout.name}</h4>
+              {statusStyling.icon}
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge 
+                variant={statusStyling.statusBadge.variant}
+                className={`text-xs ${statusStyling.statusBadge.className}`}
+              >
+                {workout.status === 'completed' ? 'Completed' : 'Planned'}
+              </Badge>
               <Badge variant="secondary" className="text-xs">
                 {workout.exercises.length} exercises
               </Badge>
               {workout.estimatedDuration && (
                 <div className="flex items-center text-xs text-muted-foreground">
                   <Clock className="h-3 w-3 mr-1" />
-                  {workout.estimatedDuration}min
+                  {workout.actualDuration || workout.estimatedDuration}min
                 </div>
               )}
             </div>
+            {workout.completedAt && (
+              <div className="text-xs text-muted-foreground mt-1">
+                Completed {new Date(workout.completedAt).toLocaleDateString()}
+              </div>
+            )}
           </div>
           
           {isEditable && (
@@ -130,25 +167,45 @@ export const WorkoutCard = React.memo(function WorkoutCard({
                 variant="ghost"
                 className="h-6 w-6 p-0"
                 onClick={(e) => handleButtonClick(e, () => onEdit(workout))}
+                title="Edit workout"
               >
                 <Edit3 className="h-3 w-3" />
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 w-6 p-0"
-                onClick={(e) => handleButtonClick(e, () => onStart(workout))}
-              >
-                <Play className="h-3 w-3" />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 w-6 p-0"
-                onClick={(e) => handleButtonClick(e, () => onComplete(workout))}
-              >
-                <CheckCircle className="h-3 w-3" />
-              </Button>
+              
+              {workout.status === 'planned' && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0"
+                  onClick={(e) => handleButtonClick(e, () => onStart(workout))}
+                  title="Start workout"
+                >
+                  <Play className="h-3 w-3" />
+                </Button>
+              )}
+              
+              {workout.status === 'completed' && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0"
+                    onClick={(e) => handleButtonClick(e, () => onComplete(workout))}
+                    title="Complete workout"
+                  >
+                    <CheckCircle className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0"
+                    onClick={(e) => handleButtonClick(e, () => onReset(workout))}
+                    title="Reset workout"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </div>

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { useDragState } from '@/hooks/useDragState';
 import { generateInitialRank } from '@/lib/lexoRank';
+import { useFitnessPlanStore } from '@/stores/fitnessPlanStore';
 
 interface WeeklyScheduleV2Props {
   workouts: Workout[];
@@ -61,6 +62,7 @@ const DroppableDay = React.memo(function DroppableDay({
   onEditWorkout,
   onStartWorkout,
   onCompleteWorkout,
+  onResetWorkout,
   isEditable 
 }: { 
   day: typeof DAYS[0]; 
@@ -68,6 +70,7 @@ const DroppableDay = React.memo(function DroppableDay({
   onEditWorkout: (workout: Workout) => void;
   onStartWorkout: (workout: Workout) => void;
   onCompleteWorkout: (workout: Workout) => void;
+  onResetWorkout: (workout: Workout) => void;
   isEditable: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -102,6 +105,7 @@ const DroppableDay = React.memo(function DroppableDay({
                 onEdit={onEditWorkout}
                 onStart={onStartWorkout}
                 onComplete={onCompleteWorkout}
+                onReset={onResetWorkout}
                 isEditable={isEditable}
               />
             ))
@@ -131,6 +135,7 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
   isEditable = true,
   isDraggingRef: parentIsDraggingRef
 }: WeeklyScheduleV2Props) {
+  const { updateWorkoutStatus } = useFitnessPlanStore();
   // LOCAL STATE: Component owns its workout layout state
   const [localWorkouts, setLocalWorkouts] = useState<Workout[]>(workouts);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
@@ -328,6 +333,7 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
           greenFlags: [],
           redFlags: [],
         },
+        status: 'planned',
         rank: newRank,
       };
 
@@ -349,15 +355,46 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
     }
   }, [localWorkouts, selectedDay, syncToParent]);
 
-  const handleStartWorkout = useCallback((workout: Workout) => {
+  const handleStartWorkout = useCallback(async (workout: Workout) => {
+    // Start workout execution mode (no status change needed)
     setExecutingWorkout(workout);
   }, []);
 
-  const handleCompleteWorkout = useCallback((workout: Workout) => {
-    // In real app, this would update workout progress in state
-    // For now, just show a success message
-    alert(`Workout "${workout.name}" marked as completed!`);
-  }, []);
+  const handleCompleteWorkout = useCallback(async (workout: Workout) => {
+    // Update workout status to completed using store
+    await updateWorkoutStatus(workout.id, 'completed');
+    
+    // Also update local state immediately for better UX
+    const updatedWorkout = { 
+      ...workout, 
+      status: 'completed' as const,
+      completedAt: new Date().toISOString()
+    };
+    const updatedWorkouts = localWorkouts.map(w => 
+      w.id === workout.id ? updatedWorkout : w
+    );
+    setLocalWorkouts(updatedWorkouts);
+    
+    // Close execution mode
+    setExecutingWorkout(null);
+  }, [updateWorkoutStatus, localWorkouts]);
+
+  const handleResetWorkout = useCallback(async (workout: Workout) => {
+    // Reset workout status to planned using store
+    await updateWorkoutStatus(workout.id, 'planned');
+    
+    // Also update local state immediately for better UX
+    const updatedWorkout = { 
+      ...workout, 
+      status: 'planned' as const,
+      completedAt: undefined,
+      actualDuration: undefined
+    };
+    const updatedWorkouts = localWorkouts.map(w => 
+      w.id === workout.id ? updatedWorkout : w
+    );
+    setLocalWorkouts(updatedWorkouts);
+  }, [updateWorkoutStatus, localWorkouts]);
 
   return (
     <>
@@ -420,6 +457,7 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
                   onEditWorkout={setEditingWorkout}
                   onStartWorkout={handleStartWorkout}
                   onCompleteWorkout={handleCompleteWorkout}
+                  onResetWorkout={handleResetWorkout}
                   isEditable={isEditable}
                 />
               );
@@ -506,6 +544,17 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
           onComplete={() => {
             handleCompleteWorkout(executingWorkout);
             setExecutingWorkout(null);
+          }}
+          onWorkoutUpdate={(updatedWorkout) => {
+            // Update local state
+            const updatedWorkouts = localWorkouts.map(w => 
+              w.id === updatedWorkout.id ? updatedWorkout : w
+            );
+            setLocalWorkouts(updatedWorkouts);
+            syncToParent(updatedWorkouts);
+            
+            // Update executing workout
+            setExecutingWorkout(updatedWorkout);
           }}
         />
       )}

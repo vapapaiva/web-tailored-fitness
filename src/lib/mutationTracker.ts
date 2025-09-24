@@ -7,7 +7,7 @@ export interface PendingMutation {
   id: string;
   clientId: string;
   timestamp: number;
-  type: 'workout_update' | 'workout_move' | 'workout_create' | 'workout_delete';
+  type: 'workout_update' | 'workout_move' | 'workout_create' | 'workout_delete' | 'workout_status_update' | 'microcycle_completion';
   data: any;
 }
 

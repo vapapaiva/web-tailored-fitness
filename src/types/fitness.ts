@@ -9,6 +9,9 @@ export interface ExerciseSet {
   restTime: number;
   notes?: string;
   volumeType?: 'sets-reps' | 'sets-reps-weight' | 'duration' | 'distance';
+  weightUnit?: 'kg' | 'lb';
+  distanceUnit?: 'km' | 'mi' | 'm';
+  volumeRowId?: string; // Groups sets into volume rows
 }
 
 export interface Exercise {
@@ -42,6 +45,11 @@ export interface Workout {
   value: string;
   exercises: Exercise[];
   checkIns: WorkoutCheckIns;
+  // Workout execution status
+  status: 'planned' | 'completed';
+  completedAt?: string;
+  actualDuration?: number;
+  notes?: string;
   // Ranking system for drag & drop
   rank: string;
   // Mutation tracking
@@ -59,6 +67,11 @@ export interface Microcycle {
   value: string;
   workouts: Workout[];
   weeklyCheckIns: WorkoutCheckIns;
+  // Microcycle completion tracking
+  status: 'active' | 'completed';
+  completedAt?: string;
+  completedWorkouts: CompletedWorkout[];
+  weeklyNotes?: string;
 }
 
 export interface Mesocycle {

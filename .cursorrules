@@ -219,6 +219,9 @@ npm run lint         # Run ESLint
   - Exercise management with volume tracking
   - No-blinking UI updates with Firebase sync
   - Optimistic updates for smooth UX
+  - **NEW**: Distance/duration volume rows automatically limited to 1 set
+  - **NEW**: Exercise-level checkbox to mark all sets as completed
+  - **NEW**: Perfect text ↔ UI synchronization for all field values
 - **Dependencies**: OpenAI API, Firebase Firestore, dnd-kit for drag & drop
 - **Architecture**: Follows expert frontend patterns for optimistic updates
 

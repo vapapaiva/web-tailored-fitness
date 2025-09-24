@@ -13,7 +13,7 @@ import {
 import { getValue, fetchAndActivate } from 'firebase/remote-config';
 import { db, remoteConfig } from '@/lib/firebase';
 import { useAuthStore } from './authStore';
-import type { FitnessPlan, FitnessPlanResponse, GenerationRequest } from '@/types/fitness';
+import type { FitnessPlan, FitnessPlanResponse, GenerationRequest, CompletedWorkout } from '@/types/fitness';
 import { createMutationTracker, addPendingMutation, removePendingMutation, isOwnMutation, type MutationState } from '@/lib/mutationTracker';
 
 interface FitnessPlanState {
@@ -35,6 +35,9 @@ interface FitnessPlanState {
   loadPlan: () => Promise<void>;
   startRealtimeSync: () => void;
   stopRealtimeSync: () => void;
+  updateWorkoutStatus: (workoutId: string, status: 'planned' | 'completed', additionalData?: { actualDuration?: number; notes?: string }) => Promise<void>;
+  completeMicrocycle: (completedWorkouts: CompletedWorkout[], weeklyNotes: string) => Promise<void>;
+  generateNextMicrocycle: (completedWorkouts: CompletedWorkout[], weeklyNotes: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -307,7 +310,20 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         
         if (planDoc.exists()) {
           const planData = planDoc.data() as FitnessPlan;
-          set({ currentPlan: planData, loading: false });
+          
+          // Migrate workouts to ensure they have status field
+          const migratedPlan = {
+            ...planData,
+            currentMicrocycle: {
+              ...planData.currentMicrocycle,
+              workouts: planData.currentMicrocycle.workouts.map(workout => ({
+                ...workout,
+                status: (workout.status === 'completed' ? 'completed' : 'planned') as 'planned' | 'completed',
+              }))
+            }
+          };
+          
+          set({ currentPlan: migratedPlan, loading: false });
         } else {
           set({ currentPlan: null, loading: false });
         }
@@ -345,7 +361,18 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           
           if (!isOwn) {
             // This is a change from another device or external source
-            set({ currentPlan: serverData });
+            // Migrate workouts to ensure they have status field
+            const migratedData = {
+              ...serverData,
+              currentMicrocycle: {
+                ...serverData.currentMicrocycle,
+                workouts: serverData.currentMicrocycle.workouts.map(workout => ({
+                  ...workout,
+                  status: (workout.status === 'completed' ? 'completed' : 'planned') as 'planned' | 'completed',
+                }))
+              }
+            };
+            set({ currentPlan: migratedData });
           } else {
             // This is our own mutation, clean up pending mutations
             serverData.currentMicrocycle?.workouts?.forEach(workout => {
@@ -487,6 +514,229 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         console.error('Failed to move workout:', error);
         set({ 
           error: error instanceof Error ? error.message : 'Failed to move workout'
+        });
+      }
+    },
+
+    updateWorkoutStatus: async (workoutId: string, status: 'planned' | 'completed', additionalData?: { actualDuration?: number; notes?: string }) => {
+      const { currentPlan, mutationState } = get();
+      const authStore = useAuthStore.getState();
+      const { user } = authStore;
+      
+      if (!user || !currentPlan) return;
+
+      try {
+        // Generate mutation for tracking
+        const mutation = addPendingMutation(mutationState, {
+          type: 'workout_status_update',
+          data: { workoutId, status, additionalData }
+        });
+
+        // 1. IMMEDIATE: Update local state optimistically
+        const updatedWorkouts = currentPlan.currentMicrocycle.workouts.map(workout => 
+          workout.id === workoutId 
+            ? { 
+                ...workout, 
+                status,
+                completedAt: status === 'completed' ? new Date().toISOString() : undefined,
+                actualDuration: additionalData?.actualDuration,
+                notes: additionalData?.notes,
+                lastMutation: {
+                  clientId: mutationState.clientId,
+                  mutationId: mutation.id,
+                  timestamp: mutation.timestamp
+                }
+              }
+            : workout
+        );
+
+        const updatedPlan = {
+          ...currentPlan,
+          currentMicrocycle: {
+            ...currentPlan.currentMicrocycle,
+            workouts: updatedWorkouts,
+          },
+        };
+
+        set({ currentPlan: updatedPlan });
+
+        // 2. ASYNC: Persist to Firebase with batching
+        const batch = writeBatch(db);
+        const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
+        
+        batch.update(planDocRef, {
+          [`currentMicrocycle.workouts`]: updatedWorkouts,
+          updatedAt: serverTimestamp(),
+        });
+
+        await batch.commit();
+
+      } catch (error) {
+        console.error('Failed to update workout status:', error);
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to update workout status'
+        });
+      }
+    },
+
+    completeMicrocycle: async (completedWorkouts: CompletedWorkout[], weeklyNotes: string) => {
+      const { currentPlan, mutationState } = get();
+      const authStore = useAuthStore.getState();
+      const { user } = authStore;
+      
+      if (!user || !currentPlan) return;
+
+      try {
+        // Generate mutation for tracking
+        addPendingMutation(mutationState, {
+          type: 'microcycle_completion',
+          data: { completedWorkouts, weeklyNotes }
+        });
+
+        // 1. IMMEDIATE: Update local state optimistically
+        const updatedMicrocycle = {
+          ...currentPlan.currentMicrocycle,
+          status: 'completed' as const,
+          completedAt: new Date().toISOString(),
+          completedWorkouts,
+          weeklyNotes,
+        };
+
+        const updatedPlan = {
+          ...currentPlan,
+          currentMicrocycle: updatedMicrocycle,
+        };
+
+        set({ currentPlan: updatedPlan });
+
+        // 2. ASYNC: Persist to Firebase with batching
+        const batch = writeBatch(db);
+        const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
+        
+        batch.update(planDocRef, {
+          [`currentMicrocycle`]: updatedMicrocycle,
+          updatedAt: serverTimestamp(),
+        });
+
+        await batch.commit();
+
+        // 3. Generate next microcycle
+        await get().generateNextMicrocycle(completedWorkouts, weeklyNotes);
+
+      } catch (error) {
+        console.error('Failed to complete microcycle:', error);
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to complete microcycle'
+        });
+      }
+    },
+
+    generateNextMicrocycle: async (completedWorkouts: CompletedWorkout[], weeklyNotes: string) => {
+      const { currentPlan } = get();
+      const authStore = useAuthStore.getState();
+      const { user } = authStore;
+      
+      if (!user || !currentPlan) return;
+
+      try {
+        set({ loading: true, error: null });
+
+        // Get user profile for generation
+        const profileDoc = await getDoc(doc(db, 'users', user.uid, 'profile', 'data'));
+        const userProfile = profileDoc.exists() ? profileDoc.data() : {};
+
+        // Get Firebase Remote Config
+        await fetchAndActivate(remoteConfig);
+        
+        const openaiApiKey = getValue(remoteConfig, 'openai_api_key').asString();
+        const fitnessPlanPrompt = getValue(remoteConfig, 'prompts_fitness_plan_generation').asString();
+
+        if (!openaiApiKey || !fitnessPlanPrompt) {
+          throw new Error('OpenAI API key or fitness plan prompt not configured');
+        }
+
+        // Prepare generation request
+        const generationRequest: GenerationRequest = {
+          userProfile,
+          customPrompt: `Previous week completed: ${weeklyNotes}\n\nCompleted workouts: ${JSON.stringify(completedWorkouts, null, 2)}\n\nGenerate the next microcycle based on this progress.`,
+          currentDate: new Date().toISOString(),
+          previousProgress: [{
+            week: currentPlan.currentMicrocycle.week,
+            startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+            endDate: new Date().toISOString(),
+            workouts: completedWorkouts,
+            weeklyNotes,
+          }],
+          currentPlan,
+        };
+
+        // Call OpenAI API
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openaiApiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4',
+            messages: [
+              {
+                role: 'system',
+                content: fitnessPlanPrompt,
+              },
+              {
+                role: 'user',
+                content: JSON.stringify(generationRequest, null, 2),
+              },
+            ],
+            temperature: 0.7,
+            max_tokens: 4000,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`OpenAI API error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        const content = data.choices[0]?.message?.content;
+
+        if (!content) {
+          throw new Error('No content received from OpenAI API');
+        }
+
+        // Parse the response
+        const fitnessPlanResponse: FitnessPlanResponse = JSON.parse(content);
+        const newPlan = fitnessPlanResponse.plan;
+
+        // Update the current microcycle with the new one
+        const updatedPlan = {
+          ...currentPlan,
+          currentMicrocycle: {
+            ...newPlan.currentMicrocycle,
+            status: 'active' as const,
+            completedWorkouts: [],
+          },
+        };
+
+        set({ currentPlan: updatedPlan, loading: false });
+
+        // Persist to Firebase
+        const batch = writeBatch(db);
+        const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
+        
+        batch.set(planDocRef, {
+          ...updatedPlan,
+          updatedAt: serverTimestamp(),
+        });
+
+        await batch.commit();
+
+      } catch (error) {
+        console.error('Failed to generate next microcycle:', error);
+        set({ 
+          loading: false,
+          error: error instanceof Error ? error.message : 'Failed to generate next microcycle'
         });
       }
     },

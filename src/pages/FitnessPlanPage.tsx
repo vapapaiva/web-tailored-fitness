@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useFitnessPlanStore, checkProfileCompleteness } from '@/stores/fitnessPlanStore';
@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PlanLoadingSkeleton } from '@/components/fitness/PlanLoadingSkeleton';
 import { FitnessPlanDisplay } from '@/components/fitness/FitnessPlanDisplay';
-import { Dumbbell, User, Sparkles, AlertCircle } from 'lucide-react';
+import { MicrocycleCompletion } from '@/components/fitness/MicrocycleCompletion';
+import { Dumbbell, User, Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
 
 /**
  * Fitness Plan page - shows generation prompt or current plan
@@ -17,8 +18,9 @@ import { Dumbbell, User, Sparkles, AlertCircle } from 'lucide-react';
 export function FitnessPlanPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { currentPlan, loading, generating, error, generatePlan, loadPlan, clearError, approvePlan, updatePlanSilently, startRealtimeSync, stopRealtimeSync } = useFitnessPlanStore();
+  const { currentPlan, loading, generating, error, generatePlan, loadPlan, clearError, approvePlan, updatePlanSilently, startRealtimeSync, stopRealtimeSync, completeMicrocycle } = useFitnessPlanStore();
   const { fetchConfig } = useProfileConfigStore();
+  const [showMicrocycleCompletion, setShowMicrocycleCompletion] = useState(false);
 
   // Load plan and config on component mount
   useEffect(() => {
@@ -33,6 +35,15 @@ export function FitnessPlanPage() {
   }, [loadPlan, fetchConfig, startRealtimeSync, stopRealtimeSync]);
 
   const isProfileComplete = checkProfileCompleteness(user?.profile);
+
+  const handleCompleteWeek = useCallback(async (completedWorkouts: any[], weeklyNotes: string) => {
+    try {
+      await completeMicrocycle(completedWorkouts, weeklyNotes);
+      setShowMicrocycleCompletion(false);
+    } catch (error) {
+      console.error('Failed to complete week:', error);
+    }
+  }, [completeMicrocycle]);
 
   const handleGeneratePlan = useCallback(async () => {
     if (!isProfileComplete) {
@@ -219,6 +230,30 @@ export function FitnessPlanPage() {
         onApprovePlan={approvePlan}
         isGenerating={generating}
       />
+
+      {/* Complete Week Button */}
+      {currentPlan && currentPlan.currentMicrocycle.status === 'active' && (
+        <div className="mt-6 flex justify-center">
+          <Button
+            onClick={() => setShowMicrocycleCompletion(true)}
+            className="bg-green-600 hover:bg-green-700 text-white"
+            size="lg"
+          >
+            <CheckCircle className="h-5 w-5 mr-2" />
+            Complete Week {currentPlan.currentMicrocycle.week}
+          </Button>
+        </div>
+      )}
+
+      {/* Microcycle Completion Dialog */}
+      {currentPlan && (
+        <MicrocycleCompletion
+          plan={currentPlan}
+          isOpen={showMicrocycleCompletion}
+          onClose={() => setShowMicrocycleCompletion(false)}
+          onComplete={handleCompleteWeek}
+        />
+      )}
     </div>
   );
 }
