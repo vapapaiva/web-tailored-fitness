@@ -91,7 +91,7 @@ export function WorkoutExecutionMode({
     if (activeTab === 'text') {
       syncUIToText();
     }
-  }, [activeTab, syncUIToText]);
+  }, [activeTab]); // FIXED: Removed syncUIToText dependency to prevent auto-sync on state changes
 
   // Tab change handler
   const handleTabChange = (value: string): void => {

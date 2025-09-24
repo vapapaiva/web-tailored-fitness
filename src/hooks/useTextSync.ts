@@ -48,7 +48,6 @@ export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate, ena
       
       newWorkout.exercises.forEach((exercise, exerciseIndex) => {
         const parsedExercise = parsed.workout[exerciseIndex];
-        const existingProgress = progress[exercise.id] || [];
         const progressArray = new Array(exercise.sets.length).fill(false);
         
         if (parsedExercise) {
@@ -100,16 +99,8 @@ export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate, ena
           }
         }
         
-        // Preserve existing progress where possible (for sets not covered by parsing)
-        for (let i = 0; i < Math.min(existingProgress.length, progressArray.length); i++) {
-          if (progressArray[i] === false && existingProgress[i] === true) {
-            // Only preserve if the parsed data didn't explicitly set this set's completion
-            const wasExplicitlySet = parsedExercise?.sets || parsedExercise?.done;
-            if (!wasExplicitlySet) {
-              progressArray[i] = existingProgress[i];
-            }
-          }
-        }
+        // REMOVED: Progress preservation logic that overrode user intent
+        // Text editor is the source of truth - always respect what user typed
         
         newProgress[exercise.id] = progressArray;
       });
