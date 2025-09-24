@@ -108,10 +108,10 @@ export function updateVolumeRow(
       updatedSet.weight = updatedRow.weight || 0;
       updatedSet.weightUnit = updatedRow.weightUnit || 'kg';
     } else if (updatedRow.type === 'duration') {
-      updatedSet.duration = (updatedRow.duration || 0) * 60;
+      updatedSet.duration = (updatedRow.duration || 15) * 60;
       updatedSet.reps = 1; // Duration exercises typically have 1 rep
     } else if (updatedRow.type === 'distance') {
-      updatedSet.notes = `${updatedRow.distance || 0}${updatedRow.distanceUnit || 'km'}`;
+      updatedSet.notes = `${updatedRow.distance || 10}${updatedRow.distanceUnit || 'km'}`;
       updatedSet.distanceUnit = updatedRow.distanceUnit || 'km';
       updatedSet.reps = 1; // Distance exercises typically have 1 rep
     }
@@ -172,10 +172,10 @@ export function updateVolumeRow(
           newSet.weight = updatedRow.weight || 0;
           newSet.weightUnit = updatedRow.weightUnit || 'kg';
         } else if (updatedRow.type === 'duration') {
-          newSet.duration = (updatedRow.duration || 0) * 60;
+          newSet.duration = (updatedRow.duration || 15) * 60;
           newSet.reps = 1; // Duration exercises typically have 1 rep
         } else if (updatedRow.type === 'distance') {
-          newSet.notes = `${updatedRow.distance || 0}${updatedRow.distanceUnit || 'km'}`;
+          newSet.notes = `${updatedRow.distance || 10}${updatedRow.distanceUnit || 'km'}`;
           newSet.distanceUnit = updatedRow.distanceUnit || 'km';
           newSet.reps = 1; // Distance exercises typically have 1 rep
         }
@@ -209,11 +209,11 @@ export function updateVolumeRow(
           newSet.weightUnit = updatedRow.weightUnit || 'kg';
           // duration and distance fields are omitted (cleaned up)
         } else if (updatedRow.type === 'duration') {
-          newSet.duration = (updatedRow.duration || 0) * 60;
+          newSet.duration = (updatedRow.duration || 15) * 60;
           newSet.reps = 1; // Duration exercises typically have 1 rep
           // weight and distance fields are omitted (cleaned up)
         } else if (updatedRow.type === 'distance') {
-          newSet.notes = `${updatedRow.distance || 0}${updatedRow.distanceUnit || 'km'}`;
+          newSet.notes = `${updatedRow.distance || 10}${updatedRow.distanceUnit || 'km'}`;
           newSet.distanceUnit = updatedRow.distanceUnit || 'km';
           newSet.reps = 1; // Distance exercises typically have 1 rep
           // weight and duration fields are omitted (cleaned up)

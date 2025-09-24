@@ -344,6 +344,11 @@ export class ComprehensiveWorkoutParser {
     const groups: { [key: string]: { sets: ExerciseSet[], completedCount: number } } = {};
     
     sets.forEach((set, index) => {
+      // Skip completion sets - they should not appear in text output
+      if (set.volumeType === 'completion') {
+        return;
+      }
+      
       let key = '';
       if (set.volumeType === 'sets-reps-weight') {
         key = `${set.reps}x${set.weight || 0}${set.weightUnit || 'kg'}`;
