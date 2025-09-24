@@ -8,7 +8,7 @@ export interface ExerciseSet {
   duration?: number;
   restTime: number;
   notes?: string;
-  volumeType?: 'sets-reps' | 'sets-reps-weight' | 'duration' | 'distance';
+  volumeType?: 'sets-reps' | 'sets-reps-weight' | 'duration' | 'distance' | 'completion';
   weightUnit?: 'kg' | 'lb';
   distanceUnit?: 'km' | 'mi' | 'm';
   volumeRowId?: string; // Groups sets into volume rows

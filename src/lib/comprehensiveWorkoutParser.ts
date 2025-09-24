@@ -7,6 +7,7 @@ export interface ParsedWorkout {
 export interface ParsedExercise {
   exercise: string;
   done?: boolean;
+  exerciseLevelDone?: boolean; // NEW: marks all volume in exercise as done
   sets?: ParsedSet[];
   distance?: string;
   distanceDone?: boolean;
@@ -153,16 +154,19 @@ export class ComprehensiveWorkoutParser {
   private static processExerciseHeader(exercise: ParsedExercise): void {
     const rawHeader = exercise.exercise;
     
-    // Check if exercise has set lines
-    const hasSets = exercise.sets && exercise.sets.length > 0;
+    // Check if exercise has volume (sets, distance, or time)
+    const hasVolume = (exercise.sets && exercise.sets.length > 0) || 
+                      exercise.distance || 
+                      exercise.time;
     
-    if (hasSets) {
-      // Has sets: strip trailing + from header, keep as exercise name
+    if (rawHeader.endsWith('+')) {
       exercise.exercise = rawHeader.replace(/\+\s*$/, '').trim();
-    } else {
-      // No sets: strip trailing + and set done: true
-      if (rawHeader.endsWith('+')) {
-        exercise.exercise = rawHeader.replace(/\+\s*$/, '').trim();
+      
+      if (hasVolume) {
+        // Has volume: + after exercise name marks all volume as done
+        exercise.exerciseLevelDone = true;
+      } else {
+        // No volume: + after exercise name marks exercise as done
         exercise.done = true;
       }
     }
@@ -243,6 +247,17 @@ export class ComprehensiveWorkoutParser {
         exercise.sets.push(exerciseSet);
       }
       
+      // Ensure all exercises have at least one set for progress tracking
+      if (exercise.sets.length === 0) {
+        exercise.sets.push({
+          reps: 1,
+          restTime: 0,
+          notes: '',
+          volumeType: 'completion',
+          volumeRowId: `completion-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        });
+      }
+      
       return exercise;
     });
   }
@@ -274,28 +289,41 @@ export class ComprehensiveWorkoutParser {
     
     workout.exercises.forEach(exercise => {
       const exerciseProgress = progress[exercise.id] || [];
-      text += `- ${exercise.name}\n`;
+      
+      // Check if this is a completion-only exercise (no real volume)
+      const hasOnlyCompletionSets = exercise.sets.every(set => set.volumeType === 'completion');
+      const isCompletionExerciseCompleted = hasOnlyCompletionSets && exerciseProgress.some(Boolean);
+      
+      // Generate exercise name with completion marker if needed
+      if (isCompletionExerciseCompleted) {
+        text += `- ${exercise.name} +\n`;
+      } else {
+        text += `- ${exercise.name}\n`;
+      }
       
       if (exercise.instructions) {
         text += `${exercise.instructions}\n`;
       }
       
-      // Group sets by type for better display
-      const groupedSets = this.groupSetsByType(exercise.sets, exerciseProgress);
-      
-      Object.entries(groupedSets).forEach(([key, group]) => {
-        const completedCount = group.completedCount;
-        const totalSets = group.sets.length;
-        const pluses = '+'.repeat(completedCount);
+      // Only show volume for exercises that have real volume (not just completion sets)
+      if (!hasOnlyCompletionSets) {
+        // Group sets by type for better display
+        const groupedSets = this.groupSetsByType(exercise.sets, exerciseProgress);
         
-        // For distance and duration, don't prefix with sets count
-        const firstSet = group.sets[0];
-        if (firstSet?.volumeType === 'distance' || firstSet?.volumeType === 'duration') {
-          text += `${key} ${pluses}\n`;
-        } else {
-          text += `${totalSets}x${key} ${pluses}\n`;
-        }
-      });
+        Object.entries(groupedSets).forEach(([key, group]) => {
+          const completedCount = group.completedCount;
+          const totalSets = group.sets.length;
+          const pluses = '+'.repeat(completedCount);
+          
+          // For distance and duration, don't prefix with sets count
+          const firstSet = group.sets[0];
+          if (firstSet?.volumeType === 'distance' || firstSet?.volumeType === 'duration') {
+            text += `${key} ${pluses}\n`;
+          } else {
+            text += `${totalSets}x${key} ${pluses}\n`;
+          }
+        });
+      }
       
       text += '\n';
     });
