@@ -111,7 +111,7 @@ export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate, ena
     } catch (error) {
       console.error('Error parsing workout text:', error);
     }
-  }, [workout, progress, onWorkoutAndProgressUpdate]);
+  }, [onWorkoutAndProgressUpdate]); // Removed workout/progress deps to prevent function recreation
 
   const syncUIToText = useCallback(() => {
     isUpdatingFromUIRef.current = true;
@@ -150,7 +150,7 @@ export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate, ena
     debounceTimeoutRef.current = setTimeout(() => {
       parseTextToState(newText); // Always sync - no blocking!
     }, 300); // Back to 300ms for responsiveness
-  }, [enableRealtimeSync, parseTextToState]);
+  }, [enableRealtimeSync, parseTextToState]); // parseTextToState is now stable
 
   // No automatic state-to-text sync - only manual via syncUIToText
 

@@ -553,8 +553,8 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
             setLocalWorkouts(updatedWorkouts);
             syncToParent(updatedWorkouts);
             
-            // Update executing workout
-            setExecutingWorkout(updatedWorkout);
+            // DON'T update executing workout to prevent feedback loop
+            // The workout execution mode manages its own state internally
           }}
         />
       )}
