@@ -15,6 +15,7 @@ import { db, remoteConfig } from '@/lib/firebase';
 import { useAuthStore } from './authStore';
 import type { FitnessPlan, FitnessPlanResponse, GenerationRequest, CompletedWorkout } from '@/types/fitness';
 import { createMutationTracker, addPendingMutation, removePendingMutation, isOwnMutation, type MutationState } from '@/lib/mutationTracker';
+import { sanitizeWorkoutForFirebase } from '@/lib/firebaseUtils';
 
 interface FitnessPlanState {
   currentPlan: FitnessPlan | null;
@@ -170,10 +171,10 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
 
         // Save plan to Firestore
         const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
-        await setDoc(planDocRef, {
+        await setDoc(planDocRef, sanitizeWorkoutForFirebase({
           ...planResponse.plan,
           updatedAt: serverTimestamp(),
-        });
+        }));
 
         set({ currentPlan: planResponse.plan, generating: false });
 
@@ -260,10 +261,10 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
       try {
         // Update Firebase without triggering store updates (silent)
         const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
-        await updateDoc(planDocRef, {
+        await updateDoc(planDocRef, sanitizeWorkoutForFirebase({
           ...planUpdate,
           updatedAt: serverTimestamp(),
-        });
+        }));
 
         // No store update - this prevents double re-renders
 
@@ -445,7 +446,7 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
         
         batch.update(planDocRef, {
-          [`currentMicrocycle.workouts`]: updatedWorkouts,
+          [`currentMicrocycle.workouts`]: sanitizeWorkoutForFirebase(updatedWorkouts),
           updatedAt: serverTimestamp(),
         });
 
@@ -504,7 +505,7 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
         
         batch.update(planDocRef, {
-          [`currentMicrocycle.workouts`]: updatedWorkouts,
+          [`currentMicrocycle.workouts`]: sanitizeWorkoutForFirebase(updatedWorkouts),
           updatedAt: serverTimestamp(),
         });
 
@@ -565,7 +566,7 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
         
         batch.update(planDocRef, {
-          [`currentMicrocycle.workouts`]: updatedWorkouts,
+          [`currentMicrocycle.workouts`]: sanitizeWorkoutForFirebase(updatedWorkouts),
           updatedAt: serverTimestamp(),
         });
 

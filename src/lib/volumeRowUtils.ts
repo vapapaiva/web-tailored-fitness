@@ -220,6 +220,8 @@ export function addVolumeRow(exercise: Exercise): Exercise {
     notes: '',
     volumeType: 'sets-reps',
     volumeRowId
+    // Explicitly omit optional fields to avoid undefined values
+    // weight, duration, weightUnit, distanceUnit will be undefined and cleaned by sanitizeWorkoutForFirebase
   }));
 
   return {
