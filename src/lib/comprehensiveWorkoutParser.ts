@@ -58,13 +58,15 @@ export class ComprehensiveWorkoutParser {
       // Process line within current exercise
       if (currentExercise) {
         // Check for set line
-        const setMatch = line.match(/^\s*(\d+)\s*x\s*(\d+)(?:\s*x\s*([0-9]+(?:\.[0-9]+)?\s*(?:kg|lb)))?\s*(\++)?\s*$/);
+        const setMatch = line.match(/^\s*(\d+)\s*x\s*(\d+)(?:\s*x\s*([0-9]+(?:\.[0-9]+)?\s*(?:kg|lb)))?\s*([\+\s]*)\s*$/);
         if (setMatch) {
-          const [, setsPlanned, reps, weight, pluses] = setMatch;
+          const [, setsPlanned, reps, weight, plusesAndSpaces] = setMatch;
+          // Count actual + symbols, ignoring spaces
+          const plusCount = (plusesAndSpaces || '').split('').filter(char => char === '+').length;
           const parsedSet: ParsedSet = {
             sets_planned: parseInt(setsPlanned),
             reps: parseInt(reps),
-            sets_done: pluses ? pluses.length : undefined
+            sets_done: plusCount > 0 ? plusCount : undefined
           };
           
           if (weight) {
@@ -76,11 +78,13 @@ export class ComprehensiveWorkoutParser {
         }
         
         // Check for distance line
-        const distanceMatch = line.match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*(km|mi|m)\s*(\+*)\s*$/);
+        const distanceMatch = line.match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*(km|mi|m)\s*([\+\s]*)\s*$/);
         if (distanceMatch) {
-          const [, value, unit, pluses] = distanceMatch;
+          const [, value, unit, plusesAndSpaces] = distanceMatch;
           currentExercise.distance = `${value}${unit}`;
-          if (pluses) {
+          // Count actual + symbols, ignoring spaces
+          const plusCount = (plusesAndSpaces || '').split('').filter(char => char === '+').length;
+          if (plusCount > 0) {
             currentExercise.distanceDone = true;
             currentExercise.done = true; // Keep for backward compatibility
           }
@@ -88,15 +92,17 @@ export class ComprehensiveWorkoutParser {
         }
         
         // Check for time line (supports formats like 15m, 15min, 1h30m)
-        const timeMatch = line.match(/^\s*(?:(\d+)h)?\s*(?:(\d+)(?:m|min))?\s*(\+*)\s*$/);
+        const timeMatch = line.match(/^\s*(?:(\d+)h)?\s*(?:(\d+)(?:m|min))?\s*([\+\s]*)\s*$/);
         if (timeMatch) {
-          const [, hours, minutes, pluses] = timeMatch;
+          const [, hours, minutes, plusesAndSpaces] = timeMatch;
           let timeStr = '';
           if (hours) timeStr += hours + 'h';
           if (minutes) timeStr += minutes + 'm';
           if (timeStr) {
             currentExercise.time = timeStr;
-            if (pluses) {
+            // Count actual + symbols, ignoring spaces
+            const plusCount = (plusesAndSpaces || '').split('').filter(char => char === '+').length;
+            if (plusCount > 0) {
               currentExercise.timeDone = true;
               currentExercise.done = true; // Keep for backward compatibility
             }
