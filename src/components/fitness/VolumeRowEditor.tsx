@@ -77,7 +77,7 @@ export function VolumeRowEditor({
       </div>
 
       {/* Sets */}
-      {(volumeRow.type === 'sets-reps' || volumeRow.type === 'sets-reps-weight') && (
+      {volumeRow.type === 'sets-reps' || volumeRow.type === 'sets-reps-weight' ? (
         <div className="col-span-1 space-y-1">
           <Label className="text-xs">Sets</Label>
           <Input
@@ -90,10 +90,10 @@ export function VolumeRowEditor({
             max="10"
           />
         </div>
-      )}
+      ) : null}
 
       {/* Reps */}
-      {(volumeRow.type === 'sets-reps' || volumeRow.type === 'sets-reps-weight') && (
+      {volumeRow.type === 'sets-reps' || volumeRow.type === 'sets-reps-weight' ? (
         <div className="col-span-1 space-y-1">
           <Label className="text-xs">Reps</Label>
           <Input
@@ -105,7 +105,7 @@ export function VolumeRowEditor({
             min="1"
           />
         </div>
-      )}
+      ) : null}
 
       {/* Weight */}
       {volumeRow.type === 'sets-reps-weight' && (

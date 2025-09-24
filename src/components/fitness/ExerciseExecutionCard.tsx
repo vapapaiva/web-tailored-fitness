@@ -138,17 +138,20 @@ export function ExerciseExecutionCard({
                   />
                   <span className="text-sm w-8">#{setIndex + 1}</span>
                   
-                  <div className="flex items-center space-x-2">
-                    <Label className="text-xs">Reps:</Label>
-                    <Input
-                      type="number"
-                      value={getInputValue(exercise.id, actualSetIndex, 'reps', set.reps)}
-                      onChange={(e) => handleInputChange(exercise.id, actualSetIndex, 'reps', e.target.value)}
-                      onBlur={() => handleInputBlur(exercise.id, actualSetIndex, 'reps', 1)}
-                      className="w-16 h-7 text-xs"
-                      min="1"
-                    />
-                  </div>
+                  {/* Reps field - only show for sets-reps and sets-reps-weight types */}
+                  {(set.volumeType === 'sets-reps' || set.volumeType === 'sets-reps-weight') && (
+                    <div className="flex items-center space-x-2">
+                      <Label className="text-xs">Reps:</Label>
+                      <Input
+                        type="number"
+                        value={getInputValue(exercise.id, actualSetIndex, 'reps', set.reps)}
+                        onChange={(e) => handleInputChange(exercise.id, actualSetIndex, 'reps', e.target.value)}
+                        onBlur={() => handleInputBlur(exercise.id, actualSetIndex, 'reps', 1)}
+                        className="w-16 h-7 text-xs"
+                        min="1"
+                      />
+                    </div>
+                  )}
 
                   {set.volumeType === 'sets-reps-weight' && (
                     <>
