@@ -94,18 +94,26 @@ export function updateVolumeRow(
     updatedRow.totalSets = 1;
     
     const templateSet = exercise.sets[volumeRow.setIndices[0]];
+    // Create clean set with only type-specific fields (don't spread templateSet to avoid field pollution)
     const updatedSet: ExerciseSet = {
-      ...templateSet,
       reps: updatedRow.reps,
+      restTime: templateSet.restTime,
+      notes: '',
       volumeType: updatedRow.type,
       volumeRowId: templateSet.volumeRowId
     };
 
-    if (updatedRow.type === 'duration') {
+    // Add type-specific fields only
+    if (updatedRow.type === 'sets-reps-weight') {
+      updatedSet.weight = updatedRow.weight || 0;
+      updatedSet.weightUnit = updatedRow.weightUnit || 'kg';
+    } else if (updatedRow.type === 'duration') {
       updatedSet.duration = (updatedRow.duration || 0) * 60;
+      updatedSet.reps = 1; // Duration exercises typically have 1 rep
     } else if (updatedRow.type === 'distance') {
       updatedSet.notes = `${updatedRow.distance || 0}${updatedRow.distanceUnit || 'km'}`;
-      updatedSet.distanceUnit = updatedRow.distanceUnit || templateSet.distanceUnit;
+      updatedSet.distanceUnit = updatedRow.distanceUnit || 'km';
+      updatedSet.reps = 1; // Distance exercises typically have 1 rep
     }
 
     const insertPosition = Math.min(...volumeRow.setIndices);
@@ -150,22 +158,26 @@ export function updateVolumeRow(
       const newSetsToInsert: ExerciseSet[] = [];
       
       for (let i = 0; i < setsDifference; i++) {
+        // Create clean set with only type-specific fields
         const newSet: ExerciseSet = {
           reps: updatedRow.reps,
           restTime: templateSet.restTime,
-          notes: templateSet.notes,
+          notes: '',
           volumeType: updatedRow.type,
           volumeRowId: templateSet.volumeRowId
         };
 
+        // Add type-specific fields only
         if (updatedRow.type === 'sets-reps-weight') {
-          newSet.weight = updatedRow.weight || templateSet.weight || 0;
-          newSet.weightUnit = updatedRow.weightUnit || templateSet.weightUnit || 'kg';
+          newSet.weight = updatedRow.weight || 0;
+          newSet.weightUnit = updatedRow.weightUnit || 'kg';
         } else if (updatedRow.type === 'duration') {
           newSet.duration = (updatedRow.duration || 0) * 60;
+          newSet.reps = 1; // Duration exercises typically have 1 rep
         } else if (updatedRow.type === 'distance') {
           newSet.notes = `${updatedRow.distance || 0}${updatedRow.distanceUnit || 'km'}`;
-          newSet.distanceUnit = updatedRow.distanceUnit || templateSet.distanceUnit;
+          newSet.distanceUnit = updatedRow.distanceUnit || 'km';
+          newSet.reps = 1; // Distance exercises typically have 1 rep
         }
 
         newSetsToInsert.push(newSet);
@@ -182,21 +194,31 @@ export function updateVolumeRow(
     // Update existing sets
     newSets = newSets.map((set, setIndex) => {
       if (volumeRow.setIndices.includes(setIndex)) {
+        // Start with base set properties, then add type-specific fields
         const newSet: ExerciseSet = {
-          ...set,
           reps: updatedRow.reps,
+          restTime: set.restTime,
+          notes: '',
           volumeType: updatedRow.type,
           volumeRowId: set.volumeRowId
         };
 
+        // Add type-specific fields and clean up others
         if (updatedRow.type === 'sets-reps-weight') {
           newSet.weight = updatedRow.weight || 0;
           newSet.weightUnit = updatedRow.weightUnit || 'kg';
+          // duration and distance fields are omitted (cleaned up)
         } else if (updatedRow.type === 'duration') {
           newSet.duration = (updatedRow.duration || 0) * 60;
+          newSet.reps = 1; // Duration exercises typically have 1 rep
+          // weight and distance fields are omitted (cleaned up)
         } else if (updatedRow.type === 'distance') {
           newSet.notes = `${updatedRow.distance || 0}${updatedRow.distanceUnit || 'km'}`;
-          newSet.distanceUnit = updatedRow.distanceUnit;
+          newSet.distanceUnit = updatedRow.distanceUnit || 'km';
+          newSet.reps = 1; // Distance exercises typically have 1 rep
+          // weight and duration fields are omitted (cleaned up)
+        } else if (updatedRow.type === 'sets-reps') {
+          // Only reps field, no weight/duration/distance
         }
 
         return newSet;

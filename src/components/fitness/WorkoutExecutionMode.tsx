@@ -53,11 +53,13 @@ export function WorkoutExecutionMode({
     textEditorValue,
     setTextEditorValue,
     syncUIToText,
-    syncTextToUI
+    syncTextToUI,
+    textAreaRef
   } = useTextSync({ 
     workout: executionState.workout, 
     progress: executionState.progress, 
-    onWorkoutAndProgressUpdate: updateWorkoutAndProgress
+    onWorkoutAndProgressUpdate: updateWorkoutAndProgress,
+    enableRealtimeSync: true // Enable real-time sync for better UX
   });
 
   const {
@@ -330,6 +332,7 @@ export function WorkoutExecutionMode({
               <WorkoutExecutionText
                 textEditorValue={textEditorValue}
                 onTextChange={setTextEditorValue}
+                textAreaRef={textAreaRef}
               />
             </TabsContent>
           </Tabs>

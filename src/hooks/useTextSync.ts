@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Workout } from '@/types/fitness';
 import { ComprehensiveWorkoutParser } from '@/lib/comprehensiveWorkoutParser';
 
@@ -6,13 +6,20 @@ interface UseTextSyncProps {
   workout: Workout;
   progress: { [exerciseId: string]: boolean[] };
   onWorkoutAndProgressUpdate: (workout: Workout, progress: { [exerciseId: string]: boolean[] }) => void;
+  enableRealtimeSync?: boolean; // Optional flag to enable real-time sync
 }
 
 /**
  * Custom hook for managing text editor synchronization
  */
-export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate }: UseTextSyncProps) {
+export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate, enableRealtimeSync = false }: UseTextSyncProps) {
   const [textEditorValue, setTextEditorValue] = useState('');
+  
+  // Refs for debouncing and preventing sync loops
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isUpdatingFromUIRef = useRef(false);
+  const lastParsedTextRef = useRef('');
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const generateTextFromState = useCallback((): string => {
     return ComprehensiveWorkoutParser.generateWorkoutText(workout, progress);
@@ -109,26 +116,69 @@ export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate }: U
 
       // Update both workout structure and progress atomically
       onWorkoutAndProgressUpdate(newWorkout, newProgress);
+      lastParsedTextRef.current = text;
     } catch (error) {
       console.error('Error parsing workout text:', error);
     }
   }, [workout, progress, onWorkoutAndProgressUpdate]);
 
   const syncUIToText = useCallback(() => {
+    isUpdatingFromUIRef.current = true;
+    
     const generatedText = generateTextFromState();
     setTextEditorValue(generatedText);
+    lastParsedTextRef.current = generatedText;
+    
+    // Reset flag immediately after setting the text
+    // The flag is only to prevent the immediate handleTextChange from triggering
+    isUpdatingFromUIRef.current = false;
   }, [generateTextFromState]);
 
   const syncTextToUI = useCallback(() => {
     parseTextToState(textEditorValue);
   }, [textEditorValue, parseTextToState]);
 
+  // Simple text change handler - always sync text to state
+  const handleTextChange = useCallback((newText: string) => {
+    setTextEditorValue(newText);
+    
+    if (!enableRealtimeSync) return;
+    
+    // Don't sync if we're updating from UI to prevent loops
+    if (isUpdatingFromUIRef.current) return;
+    
+    // Don't sync if text hasn't actually changed from last parse
+    if (newText === lastParsedTextRef.current) return;
+    
+    // Clear existing debounce timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    
+    // Debounce the parsing to avoid performance issues while typing
+    debounceTimeoutRef.current = setTimeout(() => {
+      parseTextToState(newText); // Always sync - no blocking!
+    }, 300); // Back to 300ms for responsiveness
+  }, [enableRealtimeSync, parseTextToState]);
+
+  // No automatic state-to-text sync - only manual via syncUIToText
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return {
     textEditorValue,
-    setTextEditorValue,
+    setTextEditorValue: handleTextChange, // Always syncs text to state
     syncUIToText,
     syncTextToUI,
     generateTextFromState,
-    parseTextToState
+    parseTextToState,
+    textAreaRef // Expose ref for cursor position management
   };
 }

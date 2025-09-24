@@ -1,18 +1,21 @@
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import type { RefObject } from 'react';
 
 interface WorkoutExecutionTextProps {
   textEditorValue: string;
   onTextChange: (value: string) => void;
+  textAreaRef?: RefObject<HTMLTextAreaElement | null>;
 }
 
-export function WorkoutExecutionText({ textEditorValue, onTextChange }: WorkoutExecutionTextProps) {
+export function WorkoutExecutionText({ textEditorValue, onTextChange, textAreaRef }: WorkoutExecutionTextProps) {
   return (
     <div className="space-y-2">
       <Label htmlFor="workout-text" className="text-sm font-medium">
         Workout Text (with progress tracking)
       </Label>
       <Textarea
+        ref={textAreaRef}
         id="workout-text"
         value={textEditorValue}
         onChange={(e) => onTextChange(e.target.value)}
