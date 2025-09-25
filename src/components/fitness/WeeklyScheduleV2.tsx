@@ -17,7 +17,7 @@ import type { Workout } from '@/types/fitness';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { WorkoutExecutionMode } from './WorkoutExecutionMode';
 import { WorkoutCard } from './WorkoutCard';
 import { 
@@ -446,6 +446,9 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
                 <DialogContent className="max-w-md">
                   <DialogHeader>
                     <DialogTitle>Add New Workout</DialogTitle>
+                    <DialogDescription>
+                      Create a new workout and assign it to a specific day of the week.
+                    </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">

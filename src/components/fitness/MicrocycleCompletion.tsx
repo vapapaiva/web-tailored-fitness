@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FitnessPlan, Workout, CompletedWorkout } from '@/types/fitness';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -72,6 +72,9 @@ export function MicrocycleCompletion({
             <Target className="h-5 w-5" />
             <span>Complete Week {plan.currentMicrocycle.week}</span>
           </DialogTitle>
+          <DialogDescription>
+            Review your completed workouts and provide feedback before advancing to the next week.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">

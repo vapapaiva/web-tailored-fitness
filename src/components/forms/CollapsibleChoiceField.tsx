@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { FormFieldProps } from '@/types/profile';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { FormField } from './FormField';
 import { ChevronDown, Edit3 } from 'lucide-react';
@@ -160,11 +160,9 @@ export function CollapsibleChoiceField({ field, value, onChange, error }: FormFi
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{field.questionTitle}</DialogTitle>
-            {field.questionMotivation && (
-              <p className="text-muted-foreground">
-                {field.questionMotivation}
-              </p>
-            )}
+            <DialogDescription>
+              {field.questionMotivation || 'Select your preferences from the options below.'}
+            </DialogDescription>
           </DialogHeader>
           
           <div className="mt-4 space-y-4">

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Workout, Exercise } from '@/types/fitness';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -292,6 +292,9 @@ export function WorkoutExecutionMode({
               )}
             </div>
           </DialogTitle>
+          <DialogDescription>
+            Edit your workout using the UI editor or text editor. Track your progress by checking off completed sets.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
