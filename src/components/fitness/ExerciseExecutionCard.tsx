@@ -278,17 +278,15 @@ export function ExerciseExecutionCard({
           </div>
         )}
 
-        {exercise.instructions && (
-          <div className="text-sm text-muted-foreground mt-2">
-            <Label className="text-xs font-medium">Instructions:</Label>
-            <Textarea
-              value={exercise.instructions}
-              onChange={(e) => onUpdateExercise(exercise.id, { instructions: e.target.value })}
-              className="mt-1 min-h-[60px]"
-              placeholder="Exercise instructions or cues..."
-            />
-          </div>
-        )}
+        <div className="text-sm text-muted-foreground mt-2">
+          <Label className="text-xs font-medium">Instructions:</Label>
+          <Textarea
+            value={exercise.instructions || ''}
+            onChange={(e) => onUpdateExercise(exercise.id, { instructions: e.target.value })}
+            className="mt-1 min-h-[60px]"
+            placeholder="Exercise instructions or cues..."
+          />
+        </div>
       </CardContent>
     </Card>
   );
