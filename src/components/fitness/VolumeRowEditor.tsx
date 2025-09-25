@@ -36,25 +36,24 @@ export function VolumeRowEditor({
 
   return (
     <div 
-      className={`grid grid-cols-12 gap-2 items-end p-2 border rounded transition-colors ${
+      className={`relative flex items-end gap-3 p-2 border rounded transition-colors ${
         isRowCompleted 
           ? 'bg-green-100 border-green-300 dark:bg-green-900 dark:border-green-700' 
           : ''
       }`}
     >
-      {/* Checkboxes */}
-      <div className="col-span-2 flex space-x-1">
-        {volumeRow.setIndices.map(setIndex => (
-          <Checkbox
-            key={setIndex}
-            checked={completedSets[setIndex] || false}
-            onCheckedChange={() => onToggleSet(exerciseId, setIndex)}
-          />
-        ))}
-      </div>
+      {/* Delete button - top right corner */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onDelete(exerciseId, rowIndex)}
+        className="absolute top-1 right-1 h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+      >
+        <Trash2 className="h-3 w-3" />
+      </Button>
 
       {/* Volume Type */}
-      <div className="col-span-2 space-y-1">
+      <div className="flex-shrink-0 space-y-1">
         <Label className="text-xs">Type</Label>
         <Select
           value={volumeRow.type}
@@ -64,7 +63,7 @@ export function VolumeRowEditor({
             });
           }}
         >
-          <SelectTrigger className="h-8 text-xs">
+          <SelectTrigger className="h-8 text-xs w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -78,30 +77,38 @@ export function VolumeRowEditor({
 
       {/* Sets */}
       {volumeRow.type === 'sets-reps' || volumeRow.type === 'sets-reps-weight' ? (
-        <div className="col-span-1 space-y-1">
+        <div className="flex-shrink-0 space-y-1">
           <Label className="text-xs">Sets</Label>
           <Input
             type="number"
             value={getVolumeRowValue(exerciseId, rowIndex, 'totalSets', volumeRow.totalSets)}
-            onChange={(e) => handleVolumeRowInputChange(exerciseId, rowIndex, 'totalSets', e.target.value)}
-            onBlur={() => handleVolumeRowInputBlur(exerciseId, rowIndex, 'totalSets', 1)}
-            className="h-8 text-xs"
+            onChange={(e) => {
+              const value = parseInt(e.target.value) || 1;
+              const clampedValue = Math.max(1, Math.min(15, value));
+              handleVolumeRowInputChange(exerciseId, rowIndex, 'totalSets', clampedValue.toString());
+            }}
+            onBlur={() => {
+              const currentValue = parseInt(getVolumeRowValue(exerciseId, rowIndex, 'totalSets', volumeRow.totalSets)) || 1;
+              const clampedValue = Math.max(1, Math.min(15, currentValue));
+              handleVolumeRowInputBlur(exerciseId, rowIndex, 'totalSets', clampedValue);
+            }}
+            className="h-8 text-xs w-16"
             min="1"
-            max="10"
+            max="15"
           />
         </div>
       ) : null}
 
       {/* Reps */}
       {volumeRow.type === 'sets-reps' || volumeRow.type === 'sets-reps-weight' ? (
-        <div className="col-span-1 space-y-1">
+        <div className="flex-shrink-0 space-y-1">
           <Label className="text-xs">Reps</Label>
           <Input
             type="number"
             value={getVolumeRowValue(exerciseId, rowIndex, 'reps', volumeRow.reps)}
             onChange={(e) => handleVolumeRowInputChange(exerciseId, rowIndex, 'reps', e.target.value)}
             onBlur={() => handleVolumeRowInputBlur(exerciseId, rowIndex, 'reps', 1)}
-            className="h-8 text-xs"
+            className="h-8 text-xs w-16"
             min="1"
           />
         </div>
@@ -110,19 +117,19 @@ export function VolumeRowEditor({
       {/* Weight */}
       {volumeRow.type === 'sets-reps-weight' && (
         <>
-          <div className="col-span-2 space-y-1">
+          <div className="flex-shrink-0 space-y-1">
             <Label className="text-xs">Weight</Label>
             <Input
               type="number"
               value={getVolumeRowValue(exerciseId, rowIndex, 'weight', volumeRow.weight || 0)}
               onChange={(e) => handleVolumeRowInputChange(exerciseId, rowIndex, 'weight', e.target.value)}
               onBlur={() => handleVolumeRowInputBlur(exerciseId, rowIndex, 'weight', 0)}
-              className="h-8 text-xs"
+              className="h-8 text-xs w-20"
               min="0"
               step="0.5"
             />
           </div>
-          <div className="col-span-1 space-y-1">
+          <div className="flex-shrink-0 space-y-1">
             <Label className="text-xs">Unit</Label>
             <Select
               value={volumeRow.weightUnit || 'kg'}
@@ -132,7 +139,7 @@ export function VolumeRowEditor({
                 });
               }}
             >
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-8 text-xs w-16">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -146,14 +153,14 @@ export function VolumeRowEditor({
 
       {/* Duration */}
       {volumeRow.type === 'duration' && (
-        <div className="col-span-2 space-y-1">
+        <div className="flex-shrink-0 space-y-1">
           <Label className="text-xs">Duration (min)</Label>
           <Input
             type="number"
             value={getVolumeRowValue(exerciseId, rowIndex, 'duration', volumeRow.duration || 0)}
             onChange={(e) => handleVolumeRowInputChange(exerciseId, rowIndex, 'duration', e.target.value)}
             onBlur={() => handleVolumeRowInputBlur(exerciseId, rowIndex, 'duration', 1)}
-            className="h-8 text-xs"
+            className="h-8 text-xs w-20"
             min="0"
             step="0.5"
           />
@@ -163,19 +170,19 @@ export function VolumeRowEditor({
       {/* Distance */}
       {volumeRow.type === 'distance' && (
         <>
-          <div className="col-span-2 space-y-1">
+          <div className="flex-shrink-0 space-y-1">
             <Label className="text-xs">Distance</Label>
             <Input
               type="number"
               value={getVolumeRowValue(exerciseId, rowIndex, 'distance', volumeRow.distance || 0)}
               onChange={(e) => handleVolumeRowInputChange(exerciseId, rowIndex, 'distance', e.target.value)}
               onBlur={() => handleVolumeRowInputBlur(exerciseId, rowIndex, 'distance', 1)}
-              className="h-8 text-xs"
+              className="h-8 text-xs w-20"
               min="0"
               step="0.1"
             />
           </div>
-          <div className="col-span-1 space-y-1">
+          <div className="flex-shrink-0 space-y-1">
             <Label className="text-xs">Unit</Label>
             <Select
               value={volumeRow.distanceUnit || 'km'}
@@ -185,7 +192,7 @@ export function VolumeRowEditor({
                 });
               }}
             >
-              <SelectTrigger className="h-8 text-xs">
+              <SelectTrigger className="h-8 text-xs w-16">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -198,15 +205,19 @@ export function VolumeRowEditor({
         </>
       )}
 
-      {/* Delete button */}
-      <div className="col-span-1 flex justify-end">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onDelete(exerciseId, rowIndex)}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+      {/* Spacer to push checkboxes to the right */}
+      <div className="flex-grow"></div>
+
+      {/* Checkboxes - aligned to the right */}
+      <div className="flex flex-wrap gap-1 items-end">
+        {volumeRow.setIndices.map(setIndex => (
+          <Checkbox
+            key={setIndex}
+            checked={completedSets[setIndex] || false}
+            onCheckedChange={() => onToggleSet(exerciseId, setIndex)}
+            className="flex-shrink-0"
+          />
+        ))}
       </div>
     </div>
   );
