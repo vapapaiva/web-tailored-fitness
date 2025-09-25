@@ -105,15 +105,21 @@ export function useInputManagement(workout: Workout) {
           const repsKey = getInputKey(exercise.id, setIndex, 'reps');
           const weightKey = getInputKey(exercise.id, setIndex, 'weight');
           const durationKey = getInputKey(exercise.id, setIndex, 'duration');
+          const distanceKey = getInputKey(exercise.id, setIndex, 'distance');
           
           if (newValues[repsKey] === undefined) {
             newValues[repsKey] = set.reps.toString();
           }
           if (newValues[weightKey] === undefined) {
-            newValues[weightKey] = set.weight?.toString() || '';
+            newValues[weightKey] = set.weight?.toString() || '0';
           }
           if (newValues[durationKey] === undefined) {
-            newValues[durationKey] = set.duration ? (set.duration / 60).toString() : '';
+            newValues[durationKey] = set.duration ? (set.duration / 60).toString() : '0';
+          }
+          if (newValues[distanceKey] === undefined) {
+            // Extract distance from notes field (e.g., "5km" -> "5")
+            const distanceValue = parseFloat(set.notes?.replace(/[^\d.]/g, '') || '0');
+            newValues[distanceKey] = distanceValue.toString();
           }
         });
       });

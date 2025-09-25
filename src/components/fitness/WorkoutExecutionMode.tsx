@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle, Clock, X } from 'lucide-react';
+import { CheckCircle, Clock, Trash2 } from 'lucide-react';
 import { WorkoutExecutionUI } from './WorkoutExecutionUI';
 import { WorkoutExecutionText } from './WorkoutExecutionText';
 import { useWorkoutExecution } from '@/hooks/useWorkoutExecution';
@@ -21,6 +21,7 @@ interface WorkoutExecutionModeProps {
   onClose: () => void;
   onComplete: () => void;
   onWorkoutUpdate: (updatedWorkout: Workout) => void;
+  onWorkoutDelete?: (workoutId: string) => void;
 }
 
 /**
@@ -31,7 +32,8 @@ export function WorkoutExecutionMode({
   isOpen, 
   onClose, 
   onComplete,
-  onWorkoutUpdate
+  onWorkoutUpdate,
+  onWorkoutDelete
 }: WorkoutExecutionModeProps) {
 
   // UI state
@@ -206,8 +208,18 @@ export function WorkoutExecutionMode({
                 if (field === 'reps') updatedSet.reps = value;
                 if (field === 'weight') updatedSet.weight = value;
                 if (field === 'duration') updatedSet.duration = value * 60; // Convert minutes to seconds
+                if (field === 'distance') {
+                  // Update notes field with distance value and unit
+                  const unit = set.distanceUnit || 'km';
+                  updatedSet.notes = `${value}${unit}`;
+                }
                 if (field === 'weightUnit') updatedSet.weightUnit = value as any;
-                if (field === 'distanceUnit') updatedSet.distanceUnit = value as any;
+                if (field === 'distanceUnit') {
+                  updatedSet.distanceUnit = value as any;
+                  // Update notes field to reflect new unit
+                  const distanceValue = parseFloat(set.notes?.replace(/[^\d.]/g, '') || '0');
+                  updatedSet.notes = `${distanceValue}${value}`;
+                }
                 if (field === 'notes') updatedSet.notes = value as any;
                 return updatedSet;
               }
@@ -238,6 +250,14 @@ export function WorkoutExecutionMode({
     handleVolumeRowInputBlurBase(exerciseId, rowIndex, field, defaultValue, handleUpdateVolumeRow);
   };
 
+  // Workout deletion handler
+  const handleDeleteWorkout = (): void => {
+    if (confirm('Are you sure you want to delete this workout? This action cannot be undone.')) {
+      onWorkoutDelete?.(workout.id);
+      onClose();
+    }
+  };
+
   const overallProgress = getOverallProgress();
 
   return (
@@ -260,9 +280,16 @@ export function WorkoutExecutionMode({
               </Badge>
             </div>
             <div className="flex items-center space-x-2">
-              <Button variant="outline" size="sm" onClick={onClose}>
-                <X className="h-4 w-4" />
-              </Button>
+              {onWorkoutDelete && (
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={handleDeleteWorkout}
+                  title="Delete workout"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </DialogTitle>
         </DialogHeader>

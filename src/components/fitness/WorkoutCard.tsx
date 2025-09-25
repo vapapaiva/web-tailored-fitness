@@ -9,13 +9,11 @@ import {
   Clock, 
   Play, 
   CheckCircle, 
-  Edit3,
   RotateCcw
 } from 'lucide-react';
 
 interface WorkoutCardProps {
   workout: Workout;
-  onEdit: (workout: Workout) => void;
   onStart: (workout: Workout) => void;
   onComplete: (workout: Workout) => void;
   onReset: (workout: Workout) => void;
@@ -26,7 +24,6 @@ interface WorkoutCardProps {
 
 export const WorkoutCard = React.memo(function WorkoutCard({ 
   workout, 
-  onEdit, 
   onStart, 
   onComplete, 
   onReset,
@@ -67,7 +64,7 @@ export const WorkoutCard = React.memo(function WorkoutCard({
     
     // Set a short delay to distinguish from drag start
     const timeout = setTimeout(() => {
-      onEdit(workout);
+      onStart(workout); // Changed from onEdit to onStart - unified behavior
       setClickTimeout(null);
     }, 150); // 150ms delay
     
@@ -162,16 +159,6 @@ export const WorkoutCard = React.memo(function WorkoutCard({
           
           {isEditable && (
             <div className="flex items-center space-x-1 ml-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 w-6 p-0"
-                onClick={(e) => handleButtonClick(e, () => onEdit(workout))}
-                title="Edit workout"
-              >
-                <Edit3 className="h-3 w-3" />
-              </Button>
-              
               {workout.status === 'planned' && (
                 <Button
                   size="sm"

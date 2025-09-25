@@ -18,7 +18,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { WorkoutEditor } from './WorkoutEditor';
 import { WorkoutExecutionMode } from './WorkoutExecutionMode';
 import { WorkoutCard } from './WorkoutCard';
 import { 
@@ -59,7 +58,6 @@ const DAYS = [
 const DroppableDay = React.memo(function DroppableDay({ 
   day, 
   workouts, 
-  onEditWorkout,
   onStartWorkout,
   onCompleteWorkout,
   onResetWorkout,
@@ -67,7 +65,6 @@ const DroppableDay = React.memo(function DroppableDay({
 }: { 
   day: typeof DAYS[0]; 
   workouts: Workout[]; 
-  onEditWorkout: (workout: Workout) => void;
   onStartWorkout: (workout: Workout) => void;
   onCompleteWorkout: (workout: Workout) => void;
   onResetWorkout: (workout: Workout) => void;
@@ -102,7 +99,6 @@ const DroppableDay = React.memo(function DroppableDay({
               <WorkoutCard
                 key={workout.id}
                 workout={workout}
-                onEdit={onEditWorkout}
                 onStart={onStartWorkout}
                 onComplete={onCompleteWorkout}
                 onReset={onResetWorkout}
@@ -139,7 +135,6 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
   // LOCAL STATE: Component owns its workout layout state
   const [localWorkouts, setLocalWorkouts] = useState<Workout[]>(workouts);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
-  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [executingWorkout, setExecutingWorkout] = useState<Workout | null>(null);
   const [showAddWorkout, setShowAddWorkout] = useState(false);
   const [selectedDay, setSelectedDay] = useState(() => {
@@ -287,31 +282,6 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
     }
   };
 
-  const handleWorkoutSave = useCallback((updatedWorkout: Workout) => {
-    try {
-      const updatedWorkouts = updatedWorkout.exercises.length === 0
-        ? localWorkouts.filter(w => w.id !== updatedWorkout.id)
-        : localWorkouts.map(w => w.id === updatedWorkout.id ? updatedWorkout : w);
-      
-      setLocalWorkouts(updatedWorkouts);
-      
-      // Update editingWorkout if it's the same workout being edited
-      if (editingWorkout && editingWorkout.id === updatedWorkout.id) {
-        setEditingWorkout(updatedWorkout);
-      }
-      
-      // Update expected state to match our local changes
-      expectedStateRef.current = updatedWorkouts;
-      lastSyncedStateRef.current = updatedWorkouts;
-      
-      // Skip parent sync during drag operations
-      if (isDraggingRef.current) return;
-      
-      syncToParent(updatedWorkouts);
-    } catch (error) {
-      console.error('Failed to save workout:', error);
-    }
-  }, [localWorkouts, syncToParent, editingWorkout]);
 
   const createNewWorkout = useCallback(() => {
     try {
@@ -348,7 +318,7 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
       if (isDraggingRef.current) return;
       
       syncToParent(updatedWorkouts);
-      setEditingWorkout(newWorkout);
+      setExecutingWorkout(newWorkout); // Changed from setEditingWorkout to setExecutingWorkout
       setShowAddWorkout(false);
     } catch (error) {
       console.error('Failed to create new workout:', error);
@@ -454,7 +424,6 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
                   key={day.id}
                   day={day}
                   workouts={dayWorkouts}
-                  onEditWorkout={setEditingWorkout}
                   onStartWorkout={handleStartWorkout}
                   onCompleteWorkout={handleCompleteWorkout}
                   onResetWorkout={handleResetWorkout}
@@ -527,15 +496,6 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
       </DndContext>
 
       {/* Modals */}
-      {editingWorkout && (
-        <WorkoutEditor
-          workout={editingWorkout}
-          isOpen={!!editingWorkout}
-          onClose={() => setEditingWorkout(null)}
-          onSave={handleWorkoutSave}
-        />
-      )}
-
       {executingWorkout && (
         <WorkoutExecutionMode
           workout={executingWorkout}
@@ -555,6 +515,13 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
             
             // DON'T update executing workout to prevent feedback loop
             // The workout execution mode manages its own state internally
+          }}
+          onWorkoutDelete={(workoutId) => {
+            // Delete workout from local state
+            const updatedWorkouts = localWorkouts.filter(w => w.id !== workoutId);
+            setLocalWorkouts(updatedWorkouts);
+            syncToParent(updatedWorkouts);
+            setExecutingWorkout(null);
           }}
         />
       )}

@@ -204,10 +204,9 @@ export function ExerciseExecutionCard({
                       <Label className="text-xs">Distance:</Label>
                       <Input
                         type="number"
-                        value={parseFloat(set.notes?.replace(/[^\d.]/g, '') || '0')}
-                        onChange={(e) => {
-                          onUpdateSetField(exercise.id, actualSetIndex, 'notes', `${e.target.value}${set.distanceUnit || 'km'}` as any);
-                        }}
+                        value={getInputValue(exercise.id, actualSetIndex, 'distance', parseFloat(set.notes?.replace(/[^\d.]/g, '') || '0'))}
+                        onChange={(e) => handleInputChange(exercise.id, actualSetIndex, 'distance', e.target.value)}
+                        onBlur={() => handleInputBlur(exercise.id, actualSetIndex, 'distance', 0)}
                         className="w-16 h-7 text-xs"
                         min="0"
                         step="0.1"
@@ -215,9 +214,7 @@ export function ExerciseExecutionCard({
                       <Select
                         value={set.distanceUnit || 'km'}
                         onValueChange={(value) => {
-                          const distance = parseFloat(set.notes?.replace(/[^\d.]/g, '') || '0');
                           onUpdateSetField(exercise.id, actualSetIndex, 'distanceUnit', value as any);
-                          onUpdateSetField(exercise.id, actualSetIndex, 'notes', `${distance}${value}` as any);
                         }}
                       >
                         <SelectTrigger className="w-16 h-7 text-xs">
