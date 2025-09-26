@@ -12,6 +12,7 @@ export interface ExerciseSet {
   weightUnit?: 'kg' | 'lb';
   distanceUnit?: 'km' | 'mi' | 'm';
   volumeRowId?: string; // Groups sets into volume rows
+  completed?: boolean; // Track if this set is completed
 }
 
 export interface Exercise {

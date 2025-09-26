@@ -131,7 +131,7 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
   isEditable = true,
   isDraggingRef: parentIsDraggingRef
 }: WeeklyScheduleV2Props) {
-  const { updateWorkoutStatus } = useFitnessPlanStore();
+  const { updateWorkout } = useFitnessPlanStore();
   // LOCAL STATE: Component owns its workout layout state
   const [localWorkouts, setLocalWorkouts] = useState<Workout[]>(workouts);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
@@ -331,40 +331,69 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
   }, []);
 
   const handleCompleteWorkout = useCallback(async (workout: Workout) => {
-    // Update workout status to completed using store
-    await updateWorkoutStatus(workout.id, 'completed');
-    
-    // Also update local state immediately for better UX
-    const updatedWorkout = { 
-      ...workout, 
+    // ALWAYS mark all sets as completed first (no validation, just complete everything)
+    const workoutWithAllSetsCompleted = {
+      ...workout,
       status: 'completed' as const,
-      completedAt: new Date().toISOString()
+      completedAt: new Date().toISOString(),
+      exercises: workout.exercises.map(exercise => ({
+        ...exercise,
+        sets: exercise.sets.map(set => ({
+          ...set,
+          completed: true // Mark ALL sets as completed
+        }))
+      }))
     };
+    
+    // Update local state immediately
     const updatedWorkouts = localWorkouts.map(w => 
-      w.id === workout.id ? updatedWorkout : w
+      w.id === workout.id ? workoutWithAllSetsCompleted : w
     );
     setLocalWorkouts(updatedWorkouts);
+    syncToParent(updatedWorkouts);
+    
+    // Update the entire workout in store (this will persist all changes including set completion)
+    await updateWorkout(workout.id, {
+      status: 'completed',
+      completedAt: workoutWithAllSetsCompleted.completedAt,
+      exercises: workoutWithAllSetsCompleted.exercises
+    });
     
     // Close execution mode
     setExecutingWorkout(null);
-  }, [updateWorkoutStatus, localWorkouts]);
+  }, [updateWorkout, localWorkouts, syncToParent]);
 
   const handleResetWorkout = useCallback(async (workout: Workout) => {
-    // Reset workout status to planned using store
-    await updateWorkoutStatus(workout.id, 'planned');
-    
-    // Also update local state immediately for better UX
-    const updatedWorkout = { 
+    // Create workout with all sets marked as incomplete
+    const resetWorkout = { 
       ...workout, 
       status: 'planned' as const,
       completedAt: undefined,
-      actualDuration: undefined
+      actualDuration: undefined,
+      exercises: workout.exercises.map(exercise => ({
+        ...exercise,
+        sets: exercise.sets.map(set => ({
+          ...set,
+          completed: false // Reset all set completion status
+        }))
+      }))
     };
+    
+    // Update local state immediately
     const updatedWorkouts = localWorkouts.map(w => 
-      w.id === workout.id ? updatedWorkout : w
+      w.id === workout.id ? resetWorkout : w
     );
     setLocalWorkouts(updatedWorkouts);
-  }, [updateWorkoutStatus, localWorkouts]);
+    syncToParent(updatedWorkouts);
+    
+    // Update the entire workout in store (this will persist all changes including set completion reset)
+    await updateWorkout(workout.id, {
+      status: 'planned',
+      completedAt: undefined,
+      actualDuration: undefined,
+      exercises: resetWorkout.exercises
+    });
+  }, [updateWorkout, localWorkouts, syncToParent]);
 
   return (
     <>
@@ -505,8 +534,9 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
           isOpen={!!executingWorkout}
           onClose={() => setExecutingWorkout(null)}
           onComplete={() => {
-            handleCompleteWorkout(executingWorkout);
-            setExecutingWorkout(null);
+            // Get the latest workout state from localWorkouts to ensure we have the most recent data
+            const currentWorkout = localWorkouts.find(w => w.id === executingWorkout.id) || executingWorkout;
+            handleCompleteWorkout(currentWorkout);
           }}
           onWorkoutUpdate={(updatedWorkout) => {
             // Update local state
@@ -516,8 +546,8 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
             setLocalWorkouts(updatedWorkouts);
             syncToParent(updatedWorkouts);
             
-            // DON'T update executing workout to prevent feedback loop
-            // The workout execution mode manages its own state internally
+            // Update executing workout to reflect the changes
+            setExecutingWorkout(updatedWorkout);
           }}
           onWorkoutDelete={(workoutId) => {
             // Delete workout from local state

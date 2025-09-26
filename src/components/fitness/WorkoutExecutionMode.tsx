@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle, Clock, Trash2 } from 'lucide-react';
+import { CheckCircle, Clock, Trash2, RotateCcw } from 'lucide-react';
 import { WorkoutExecutionUI } from './WorkoutExecutionUI';
 import { WorkoutExecutionText } from './WorkoutExecutionText';
 import { useWorkoutExecution } from '@/hooks/useWorkoutExecution';
@@ -258,6 +258,11 @@ export function WorkoutExecutionMode({
     }
   };
 
+  const handleCompleteWorkout = (): void => {
+    // Always call onComplete - the parent will handle marking all sets as completed
+    onComplete();
+  };
+
   const overallProgress = getOverallProgress();
 
   return (
@@ -275,8 +280,12 @@ export function WorkoutExecutionMode({
                 className="text-xl font-bold flex-1"
                 placeholder="Workout name"
               />
-              <Badge variant="outline">
+              <Badge 
+                variant={overallProgress.isWorkoutComplete ? "default" : "outline"}
+                className={overallProgress.isWorkoutComplete ? "bg-green-600 text-white" : ""}
+              >
                 {overallProgress.completedCount}/{overallProgress.totalCount} sets
+                {overallProgress.isWorkoutComplete && " ✓"}
               </Badge>
             </div>
             <div className="flex items-center space-x-2">
@@ -373,10 +382,35 @@ export function WorkoutExecutionMode({
               Close
             </Button>
             <div className="space-x-2">
-              <Button onClick={onComplete}>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Complete Workout
-              </Button>
+              {overallProgress.isWorkoutComplete ? (
+                <Button 
+                  onClick={() => {
+                    // Reset the workout when it's complete
+                    const resetWorkout = {
+                      ...executionState.workout,
+                      status: 'planned' as const,
+                      completedAt: undefined,
+                      exercises: executionState.workout.exercises.map(exercise => ({
+                        ...exercise,
+                        sets: exercise.sets.map(set => ({
+                          ...set,
+                          completed: false
+                        }))
+                      }))
+                    };
+                    onWorkoutUpdate(resetWorkout);
+                  }}
+                  variant="outline"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset Workout
+                </Button>
+              ) : (
+                <Button onClick={handleCompleteWorkout}>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Complete All & Finish
+                </Button>
+              )}
             </div>
           </div>
         </div>
