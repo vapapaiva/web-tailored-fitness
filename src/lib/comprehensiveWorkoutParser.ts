@@ -9,11 +9,14 @@ export interface ParsedExercise {
   done?: boolean;
   exerciseLevelDone?: boolean; // NEW: marks all volume in exercise as done
   sets?: ParsedSet[];
+  distances?: Array<{ value: string; done?: boolean }>;
+  times?: Array<{ value: string; done?: boolean }>;
+  cues?: string;
+  // Legacy fields for backward compatibility
   distance?: string;
   distanceDone?: boolean;
   time?: string;
   timeDone?: boolean;
-  cues?: string;
 }
 
 export interface ParsedSet {
@@ -81,12 +84,28 @@ export class ComprehensiveWorkoutParser {
         const distanceMatch = line.match(/^\s*([0-9]+(?:\.[0-9]+)?)\s*(km|mi|m)\s*([\+\s]*)\s*$/);
         if (distanceMatch) {
           const [, value, unit, plusesAndSpaces] = distanceMatch;
-          currentExercise.distance = `${value}${unit}`;
+          const distanceValue = `${value}${unit}`;
+          
+          // Initialize distances array if not exists
+          if (!currentExercise.distances) {
+            currentExercise.distances = [];
+          }
+          
           // Count actual + symbols, ignoring spaces
           const plusCount = (plusesAndSpaces || '').split('').filter(char => char === '+').length;
-          if (plusCount > 0) {
+          const isDone = plusCount > 0;
+          
+          // Add this distance entry to the array
+          currentExercise.distances.push({
+            value: distanceValue,
+            done: isDone
+          });
+          
+          // Keep legacy fields for backward compatibility (use last entry)
+          currentExercise.distance = distanceValue;
+          if (isDone) {
             currentExercise.distanceDone = true;
-            currentExercise.done = true; // Keep for backward compatibility
+            currentExercise.done = true;
           }
           continue;
         }
@@ -99,12 +118,26 @@ export class ComprehensiveWorkoutParser {
           if (hours) timeStr += hours + 'h';
           if (minutes) timeStr += minutes + 'm';
           if (timeStr) {
-            currentExercise.time = timeStr;
+            // Initialize times array if not exists
+            if (!currentExercise.times) {
+              currentExercise.times = [];
+            }
+            
             // Count actual + symbols, ignoring spaces
             const plusCount = (plusesAndSpaces || '').split('').filter(char => char === '+').length;
-            if (plusCount > 0) {
+            const isDone = plusCount > 0;
+            
+            // Add this time entry to the array
+            currentExercise.times.push({
+              value: timeStr,
+              done: isDone
+            });
+            
+            // Keep legacy fields for backward compatibility (use last entry)
+            currentExercise.time = timeStr;
+            if (isDone) {
               currentExercise.timeDone = true;
-              currentExercise.done = true; // Keep for backward compatibility
+              currentExercise.done = true;
             }
           }
           continue;
@@ -197,9 +230,9 @@ export class ComprehensiveWorkoutParser {
       
       // Convert sets
       if (parsedExercise.sets) {
-        parsedExercise.sets.forEach(parsedSet => {
-          // Generate unique volumeRowId for this set line
-          const volumeRowId = `volume-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        parsedExercise.sets.forEach((parsedSet, setLineIndex) => {
+          // Generate unique volumeRowId for this specific set line (includes exercise index and line index)
+          const volumeRowId = `volume-ex${index}-line${setLineIndex}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           
           // Create individual sets based on sets_planned
           for (let i = 0; i < parsedSet.sets_planned; i++) {
@@ -224,8 +257,24 @@ export class ComprehensiveWorkoutParser {
         });
       }
       
-      // Handle distance
-      if (parsedExercise.distance) {
+      // Handle multiple distances
+      if (parsedExercise.distances) {
+        parsedExercise.distances.forEach((distanceEntry, distanceIndex) => {
+          const distanceMatch = distanceEntry.value.match(/([0-9]+(?:\.[0-9]+)?)(km|mi|m)/);
+          if (distanceMatch) {
+            const exerciseSet: ExerciseSet = {
+              reps: 1,
+              restTime: 90,
+              notes: distanceEntry.value,
+              volumeType: 'distance',
+              distanceUnit: distanceMatch[2] as 'km' | 'mi' | 'm',
+              volumeRowId: `volume-ex${index}-distance${distanceIndex}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            };
+            exercise.sets.push(exerciseSet);
+          }
+        });
+      } else if (parsedExercise.distance) {
+        // Legacy support for single distance
         const distanceMatch = parsedExercise.distance.match(/([0-9]+(?:\.[0-9]+)?)(km|mi|m)/);
         if (distanceMatch) {
           const exerciseSet: ExerciseSet = {
@@ -234,21 +283,34 @@ export class ComprehensiveWorkoutParser {
             notes: parsedExercise.distance,
             volumeType: 'distance',
             distanceUnit: distanceMatch[2] as 'km' | 'mi' | 'm',
-            volumeRowId: `volume-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            volumeRowId: `volume-ex${index}-distance0-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
           };
           exercise.sets.push(exerciseSet);
         }
       }
       
-      // Handle time
-      if (parsedExercise.time) {
+      // Handle multiple times
+      if (parsedExercise.times) {
+        parsedExercise.times.forEach((timeEntry, timeIndex) => {
+          const exerciseSet: ExerciseSet = {
+            reps: 1,
+            restTime: 90,
+            notes: timeEntry.value,
+            volumeType: 'duration',
+            duration: this.parseTimeToSeconds(timeEntry.value),
+            volumeRowId: `volume-ex${index}-time${timeIndex}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+          };
+          exercise.sets.push(exerciseSet);
+        });
+      } else if (parsedExercise.time) {
+        // Legacy support for single time
         const exerciseSet: ExerciseSet = {
           reps: 1,
           restTime: 90,
           notes: parsedExercise.time,
           volumeType: 'duration',
           duration: this.parseTimeToSeconds(parsedExercise.time),
-          volumeRowId: `volume-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+          volumeRowId: `volume-ex${index}-time0-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
         };
         exercise.sets.push(exerciseSet);
       }
@@ -313,21 +375,31 @@ export class ComprehensiveWorkoutParser {
       
       // Only show volume for exercises that have real volume (not just completion sets)
       if (!hasOnlyCompletionSets) {
-        // Group sets by type for better display
-        const groupedSets = this.groupSetsByType(exercise.sets, exerciseProgress);
+        // Group sets by volumeRowId to preserve user's original structure
+        const volumeRows = this.groupSetsByVolumeRowId(exercise.sets, exerciseProgress);
         
-        Object.entries(groupedSets).forEach(([key, group]) => {
-          const completedCount = group.completedCount;
-          const totalSets = group.sets.length;
+        volumeRows.forEach(volumeRow => {
+          const completedCount = volumeRow.completedCount;
+          const totalSets = volumeRow.sets.length;
           const pluses = '+'.repeat(completedCount);
           
-          // For distance and duration, don't prefix with sets count
-          const firstSet = group.sets[0];
-          if (firstSet?.volumeType === 'distance' || firstSet?.volumeType === 'duration') {
-            text += `${key} ${pluses}\n`;
+          // Generate the volume row text based on the first set's properties
+          const firstSet = volumeRow.sets[0];
+          let volumeText = '';
+          
+          if (firstSet?.volumeType === 'sets-reps-weight') {
+            volumeText = `${totalSets}x${firstSet.reps}x${firstSet.weight || 0}${firstSet.weightUnit || 'kg'}`;
+          } else if (firstSet?.volumeType === 'duration') {
+            volumeText = `${Math.round((firstSet.duration || 0) / 60)}min`;
+          } else if (firstSet?.volumeType === 'distance') {
+            const distance = parseFloat(firstSet.notes?.replace(/[^\d.]/g, '') || '0');
+            const unit = firstSet.distanceUnit || 'km';
+            volumeText = `${distance}${unit}`;
           } else {
-            text += `${totalSets}x${key} ${pluses}\n`;
+            volumeText = `${totalSets}x${firstSet.reps}`;
           }
+          
+          text += `${volumeText} ${pluses}\n`;
         });
       }
       
@@ -338,10 +410,10 @@ export class ComprehensiveWorkoutParser {
   }
   
   /**
-   * Group sets by their type and values for display
+   * Group sets by volumeRowId to preserve user's original structure
    */
-  private static groupSetsByType(sets: ExerciseSet[], progress: boolean[]) {
-    const groups: { [key: string]: { sets: ExerciseSet[], completedCount: number } } = {};
+  private static groupSetsByVolumeRowId(sets: ExerciseSet[], progress: boolean[]) {
+    const groups: { [volumeRowId: string]: { sets: ExerciseSet[], completedCount: number, indices: number[] } } = {};
     
     sets.forEach((set, index) => {
       // Skip completion sets - they should not appear in text output
@@ -349,29 +421,22 @@ export class ComprehensiveWorkoutParser {
         return;
       }
       
-      let key = '';
-      if (set.volumeType === 'sets-reps-weight') {
-        key = `${set.reps}x${set.weight || 0}${set.weightUnit || 'kg'}`;
-      } else if (set.volumeType === 'duration') {
-        key = `${Math.round((set.duration || 0) / 60)}min`;
-      } else if (set.volumeType === 'distance') {
-        const distance = parseFloat(set.notes?.replace(/[^\d.]/g, '') || '0');
-        const unit = set.distanceUnit || 'km';
-        key = `${distance}${unit}`;
-      } else {
-        key = `${set.reps}`;
+      const volumeRowId = set.volumeRowId || `legacy-${index}`;
+      
+      if (!groups[volumeRowId]) {
+        groups[volumeRowId] = { sets: [], completedCount: 0, indices: [] };
       }
       
-      if (!groups[key]) {
-        groups[key] = { sets: [], completedCount: 0 };
-      }
-      
-      groups[key].sets.push(set);
+      groups[volumeRowId].sets.push(set);
+      groups[volumeRowId].indices.push(index);
       if (progress[index]) {
-        groups[key].completedCount++;
+        groups[volumeRowId].completedCount++;
       }
     });
     
-    return groups;
+    // Convert to array and sort by the first set index to preserve original order
+    return Object.values(groups).sort((a, b) => 
+      Math.min(...a.indices) - Math.min(...b.indices)
+    );
   }
 }

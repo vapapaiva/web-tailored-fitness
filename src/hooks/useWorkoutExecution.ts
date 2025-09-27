@@ -91,11 +91,34 @@ export function useWorkoutExecution({ initialWorkout, onWorkoutUpdate }: UseWork
   }, []);
 
   const updateWorkoutAndProgress = useCallback((newWorkout: Workout, newProgress: { [exerciseId: string]: boolean[] }) => {
+    // Check if all sets are completed based on the new progress
+    const allSetsCompleted = Object.values(newProgress).every(exerciseProgress => 
+      exerciseProgress.every(Boolean) && exerciseProgress.length > 0
+    );
+
+    // Update workout with automatic status sync
+    const workoutWithStatus = {
+      ...newWorkout,
+      status: allSetsCompleted ? 'completed' as const : 'planned' as const,
+      completedAt: allSetsCompleted ? (newWorkout.completedAt || new Date().toISOString()) : undefined,
+      // Also update the set completion in the workout structure to match progress
+      exercises: newWorkout.exercises.map(exercise => {
+        const exerciseProgress = newProgress[exercise.id] || [];
+        return {
+          ...exercise,
+          sets: exercise.sets.map((set, index) => ({
+            ...set,
+            completed: exerciseProgress[index] || false
+          }))
+        };
+      })
+    };
+
     setExecutionState({
-      workout: newWorkout,
+      workout: workoutWithStatus,
       progress: newProgress
     });
-    onWorkoutUpdate(newWorkout);
+    onWorkoutUpdate(workoutWithStatus);
   }, [onWorkoutUpdate]);
 
   const updateWorkoutStructure = useCallback((newWorkout: Workout) => {

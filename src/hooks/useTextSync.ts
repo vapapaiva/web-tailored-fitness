@@ -72,15 +72,38 @@ export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate, ena
               });
             }
             
-            // Handle granular completion for distance/duration volume rows
+            // Handle granular completion for distance/duration volume rows using new arrays
+            let distanceSetIndex = 0;
+            let timeSetIndex = 0;
+            
             exercise.sets.forEach((set, setIndex) => {
-              if (set.volumeType === 'distance' && parsedExercise.distanceDone) {
-                if (setIndex < progressArray.length) {
-                  progressArray[setIndex] = true;
+              if (set.volumeType === 'distance') {
+                // Map to specific distance entry completion status
+                if (parsedExercise.distances && distanceSetIndex < parsedExercise.distances.length) {
+                  const distanceEntry = parsedExercise.distances[distanceSetIndex];
+                  if (setIndex < progressArray.length) {
+                    progressArray[setIndex] = distanceEntry.done || false;
+                  }
+                  distanceSetIndex++;
+                } else if (parsedExercise.distanceDone) {
+                  // Fallback to legacy logic
+                  if (setIndex < progressArray.length) {
+                    progressArray[setIndex] = true;
+                  }
                 }
-              } else if (set.volumeType === 'duration' && parsedExercise.timeDone) {
-                if (setIndex < progressArray.length) {
-                  progressArray[setIndex] = true;
+              } else if (set.volumeType === 'duration') {
+                // Map to specific time entry completion status
+                if (parsedExercise.times && timeSetIndex < parsedExercise.times.length) {
+                  const timeEntry = parsedExercise.times[timeSetIndex];
+                  if (setIndex < progressArray.length) {
+                    progressArray[setIndex] = timeEntry.done || false;
+                  }
+                  timeSetIndex++;
+                } else if (parsedExercise.timeDone) {
+                  // Fallback to legacy logic
+                  if (setIndex < progressArray.length) {
+                    progressArray[setIndex] = true;
+                  }
                 }
               }
             });
