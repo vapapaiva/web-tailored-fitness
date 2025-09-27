@@ -14,6 +14,9 @@ export interface VolumeRow {
 
 /**
  * Get volume rows for an exercise by grouping sets with the same volumeRowId
+ * - Respects user intent by grouping only sets with same volumeRowId
+ * - Ensures Add Volume always creates separate rows
+ * - Allows mixed values within the same volumeRowId (for backwards compatibility)
  */
 export function getVolumeRows(exercise: Exercise): VolumeRow[] {
   const volumeRows: VolumeRow[] = [];
@@ -39,27 +42,56 @@ export function getVolumeRows(exercise: Exercise): VolumeRow[] {
     .map(([volumeRowId, group]) => ({ volumeRowId, ...group }))
     .sort((a, b) => Math.min(...a.indices) - Math.min(...b.indices));
 
+  // Process each group: group identical sets together, split different ones
   sortedGroups.forEach((group) => {
-    const firstSet = group.sets[0];
-    const volumeRow: VolumeRow = {
-      type: (firstSet.volumeType || 'sets-reps') as VolumeRow['type'],
-      totalSets: group.sets.length,
-      reps: firstSet.reps,
-      setIndices: group.indices
-    };
+    // Group sets within this volumeRowId by their actual values
+    const valueGroups: { [key: string]: { sets: ExerciseSet[], indices: number[] } } = {};
+    
+    group.sets.forEach((set, setIndexInGroup) => {
+      const actualIndex = group.indices[setIndexInGroup];
+      
+      // Create a key based on all relevant values
+      const valueKey = JSON.stringify({
+        volumeType: set.volumeType,
+        reps: set.reps,
+        weight: set.weight,
+        weightUnit: set.weightUnit,
+        duration: set.duration,
+        notes: set.notes,
+        distanceUnit: set.distanceUnit
+      });
+      
+      if (!valueGroups[valueKey]) {
+        valueGroups[valueKey] = { sets: [], indices: [] };
+      }
+      valueGroups[valueKey].sets.push(set);
+      valueGroups[valueKey].indices.push(actualIndex);
+    });
+    
+    // Create volume rows for each value group
+    Object.values(valueGroups).forEach(valueGroup => {
+      const firstSet = valueGroup.sets[0];
+      
+      const volumeRow: VolumeRow = {
+        type: (firstSet.volumeType || 'sets-reps') as VolumeRow['type'],
+        totalSets: valueGroup.sets.length,
+        reps: firstSet.reps,
+        setIndices: valueGroup.indices
+      };
 
-    if (firstSet.volumeType === 'sets-reps-weight') {
-      volumeRow.weight = firstSet.weight;
-      volumeRow.weightUnit = firstSet.weightUnit;
-    } else if (firstSet.volumeType === 'duration') {
-      volumeRow.duration = (firstSet.duration || 0) / 60; // Convert to minutes
-    } else if (firstSet.volumeType === 'distance') {
-      const distance = parseFloat(firstSet.notes?.replace(/[^\d.]/g, '') || '0');
-      volumeRow.distance = distance;
-      volumeRow.distanceUnit = firstSet.distanceUnit;
-    }
+      if (firstSet.volumeType === 'sets-reps-weight') {
+        volumeRow.weight = firstSet.weight;
+        volumeRow.weightUnit = firstSet.weightUnit;
+      } else if (firstSet.volumeType === 'duration') {
+        volumeRow.duration = (firstSet.duration || 0) / 60; // Convert to minutes
+      } else if (firstSet.volumeType === 'distance') {
+        const distance = parseFloat(firstSet.notes?.replace(/[^\d.]/g, '') || '0');
+        volumeRow.distance = distance;
+        volumeRow.distanceUnit = firstSet.distanceUnit;
+      }
 
-    volumeRows.push(volumeRow);
+      volumeRows.push(volumeRow);
+    });
   });
 
   return volumeRows;
@@ -77,17 +109,47 @@ export function updateVolumeRow(
   const volumeRow = volumeRows[rowIndex];
   if (!volumeRow) return exercise;
 
-  const updatedRow = { ...volumeRow, ...updates };
+  // Validate and sanitize updates to prevent invalid values
+  const sanitizedUpdates = { ...updates };
+  if (sanitizedUpdates.totalSets !== undefined) {
+    sanitizedUpdates.totalSets = Math.max(1, Math.min(15, Math.floor(sanitizedUpdates.totalSets)));
+  }
+  if (sanitizedUpdates.reps !== undefined) {
+    sanitizedUpdates.reps = Math.max(1, Math.min(999, Math.floor(sanitizedUpdates.reps)));
+  }
+  if (sanitizedUpdates.weight !== undefined) {
+    sanitizedUpdates.weight = Math.max(0, Math.min(9999, sanitizedUpdates.weight));
+  }
+  if (sanitizedUpdates.duration !== undefined) {
+    sanitizedUpdates.duration = Math.max(0.1, Math.min(999, sanitizedUpdates.duration));
+  }
+  if (sanitizedUpdates.distance !== undefined) {
+    sanitizedUpdates.distance = Math.max(0.1, Math.min(999, sanitizedUpdates.distance));
+  }
+
+  const updatedRow = { ...volumeRow, ...sanitizedUpdates };
+  
+  // Early return if no meaningful changes (prevents unnecessary updates)
+  const hasChanges = Object.keys(sanitizedUpdates).some(key => {
+    const oldValue = volumeRow[key as keyof VolumeRow];
+    const newValue = sanitizedUpdates[key as keyof VolumeRow];
+    return oldValue !== newValue;
+  });
+  
+  if (!hasChanges) {
+    return exercise; // No changes needed
+  }
+  
   let newSets = [...exercise.sets];
   
   // Handle type changes to single-set types
-  const isTypeChangeToSingleSet = updates.type && 
-    (updates.type === 'distance' || updates.type === 'duration') && 
-    volumeRow.type !== updates.type;
+  const isTypeChangeToSingleSet = sanitizedUpdates.type && 
+    (sanitizedUpdates.type === 'distance' || sanitizedUpdates.type === 'duration') && 
+    volumeRow.type !== sanitizedUpdates.type;
   
   // Handle type changes from single-set to multi-set types
-  const isTypeChangeToMultipleSets = updates.type && 
-    (updates.type === 'sets-reps' || updates.type === 'sets-reps-weight') && 
+  const isTypeChangeToMultipleSets = sanitizedUpdates.type && 
+    (sanitizedUpdates.type === 'sets-reps' || sanitizedUpdates.type === 'sets-reps-weight') && 
     (volumeRow.type === 'distance' || volumeRow.type === 'duration');
   
   if (isTypeChangeToSingleSet) {
@@ -147,9 +209,9 @@ export function updateVolumeRow(
     
     newSets.splice(insertPosition, 0, ...newSetsToInsert);
     
-  } else if (updates.totalSets !== undefined && updates.totalSets !== volumeRow.totalSets) {
+  } else if (sanitizedUpdates.totalSets !== undefined && sanitizedUpdates.totalSets !== volumeRow.totalSets) {
     // Handle explicit totalSets changes
-    const setsDifference = updates.totalSets - volumeRow.totalSets;
+    const setsDifference = sanitizedUpdates.totalSets - volumeRow.totalSets;
     
     if (setsDifference > 0) {
       // Add new sets
@@ -191,7 +253,10 @@ export function updateVolumeRow(
       newSets = newSets.filter((_, index) => !indicesToRemove.includes(index));
     }
   } else {
-    // Update existing sets
+    // Update existing sets - ensure they all get the same volumeRowId to stay grouped
+    const sharedVolumeRowId = exercise.sets[volumeRow.setIndices[0]]?.volumeRowId || 
+      `volume-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
     newSets = newSets.map((set, setIndex) => {
       if (volumeRow.setIndices.includes(setIndex)) {
         // Start with base set properties, then add type-specific fields
@@ -200,7 +265,7 @@ export function updateVolumeRow(
           restTime: set.restTime,
           notes: '',
           volumeType: updatedRow.type,
-          volumeRowId: set.volumeRowId
+          volumeRowId: sharedVolumeRowId // Ensure all sets in this volume row have same ID
         };
 
         // Add type-specific fields and clean up others
@@ -227,7 +292,74 @@ export function updateVolumeRow(
     });
   }
 
+  // Return the updated exercise without normalization for now
   return { ...exercise, sets: newSets };
+}
+
+/**
+ * Normalize exercise volume rows to ensure consistent grouping
+ * This function ensures that sets with identical values get the same volumeRowId
+ * while sets with different values get unique volumeRowIds
+ */
+export function normalizeExerciseVolumeRows(exercise: Exercise): Exercise {
+  const normalizedSets = [...exercise.sets];
+  
+  // Group sets by their values (ignoring current volumeRowId)
+  const valueGroups: { [key: string]: { sets: ExerciseSet[], indices: number[] } } = {};
+  
+  normalizedSets.forEach((set, index) => {
+    if (set.volumeType === 'completion') return; // Skip completion sets
+    
+    // Create a key based on all relevant values
+    const valueKey = JSON.stringify({
+      volumeType: set.volumeType,
+      reps: set.reps,
+      weight: set.weight,
+      weightUnit: set.weightUnit,
+      duration: set.duration,
+      notes: set.notes,
+      distanceUnit: set.distanceUnit
+    });
+    
+    if (!valueGroups[valueKey]) {
+      valueGroups[valueKey] = { sets: [], indices: [] };
+    }
+    valueGroups[valueKey].sets.push(set);
+    valueGroups[valueKey].indices.push(index);
+  });
+  
+  // Assign consistent volumeRowIds within each value group
+  Object.values(valueGroups).forEach(group => {
+    if (group.sets.length > 1) {
+      // Multiple sets with same values - give them the same volumeRowId
+      const sharedVolumeRowId = group.sets[0].volumeRowId || 
+        `normalized-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      group.indices.forEach(index => {
+        normalizedSets[index] = {
+          ...normalizedSets[index],
+          volumeRowId: sharedVolumeRowId
+        };
+      });
+    } else {
+      // Single set with unique values - ensure it has a unique volumeRowId
+      const index = group.indices[0];
+      const currentSet = normalizedSets[index];
+      
+      // Only assign new ID if it doesn't have one or if it might conflict
+      if (!currentSet.volumeRowId || currentSet.volumeRowId.startsWith('individual-')) {
+        normalizedSets[index] = {
+          ...currentSet,
+          volumeRowId: `unique-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        };
+      }
+    }
+  });
+  
+  return {
+    ...exercise,
+    sets: normalizedSets
+  };
 }
 
 /**
@@ -265,3 +397,4 @@ export function removeVolumeRow(exercise: Exercise, rowIndex: number): Exercise 
     sets: exercise.sets.filter((_, setIndex) => !volumeRow.setIndices.includes(setIndex))
   };
 }
+

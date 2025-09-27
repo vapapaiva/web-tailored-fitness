@@ -200,7 +200,7 @@ export function WorkoutExecutionMode({
       ...executionState.workout,
       exercises: executionState.workout.exercises.map(exercise => {
         if (exercise.id === exerciseId) {
-          return {
+          const updatedExercise = {
             ...exercise,
             sets: exercise.sets.map((set, index) => {
               if (index === setIndex) {
@@ -221,11 +221,20 @@ export function WorkoutExecutionMode({
                   updatedSet.notes = `${distanceValue}${value}`;
                 }
                 if (field === 'notes') updatedSet.notes = value as any;
+                
+                // Give this set a unique volumeRowId so it appears as separate volume row
+                // This ensures that when user changes individual sets in expanded view,
+                // they appear as separate volume rows in collapsed view
+                updatedSet.volumeRowId = `individual-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                
                 return updatedSet;
               }
               return set;
             })
           };
+          
+          // Return the updated exercise without normalization for now
+          return updatedExercise;
         }
         return exercise;
       })

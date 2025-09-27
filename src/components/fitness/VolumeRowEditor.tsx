@@ -83,14 +83,12 @@ export function VolumeRowEditor({
             type="number"
             value={getVolumeRowValue(exerciseId, rowIndex, 'totalSets', volumeRow.totalSets)}
             onChange={(e) => {
-              const value = parseInt(e.target.value) || 1;
-              const clampedValue = Math.max(1, Math.min(15, value));
-              handleVolumeRowInputChange(exerciseId, rowIndex, 'totalSets', clampedValue.toString());
+              // Let the input management handle clamping and validation
+              handleVolumeRowInputChange(exerciseId, rowIndex, 'totalSets', e.target.value);
             }}
             onBlur={() => {
-              const currentValue = parseInt(getVolumeRowValue(exerciseId, rowIndex, 'totalSets', volumeRow.totalSets)) || 1;
-              const clampedValue = Math.max(1, Math.min(15, currentValue));
-              handleVolumeRowInputBlur(exerciseId, rowIndex, 'totalSets', clampedValue);
+              // Use a consistent default value - let the blur handler decide if update is needed
+              handleVolumeRowInputBlur(exerciseId, rowIndex, 'totalSets', 1);
             }}
             className="h-8 text-xs w-16"
             min="1"
