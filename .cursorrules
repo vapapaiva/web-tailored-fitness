@@ -247,7 +247,38 @@ npm run lint         # Run ESLint
 - **UX/UI Preserved**: All existing functionality and user experience maintained exactly as before
 - **Performance**: Improved performance through better component separation and reduced re-renders
 
-### 13. Real-Time Sync Pattern
+### 13. Comprehensive Workout Statistics System (2025-09-27)
+- **Files**: 
+  - `src/lib/workoutStats.ts` - Statistics calculation utilities
+  - `src/components/fitness/WorkoutStats.tsx` - Enhanced stats component
+  - Updated `src/components/fitness/WeeklyScheduleV2.tsx` - Integrated new stats
+  - Updated `src/components/fitness/FitnessPlanDisplay.tsx` - Removed old stats props
+- **Description**: Advanced workout progress tracking with actual vs planned comparisons
+- **Features**:
+  - **Real-Time Progress Tracking**: Shows completed vs planned workouts, exercises, and sets
+  - **Completion Rate Calculations**: Percentage-based progress indicators with color coding
+  - **Duration Tracking**: Actual time spent vs planned duration with completion rates
+  - **Expandable Detailed View**: Exercise type breakdown and muscle group analysis
+  - **Individual Exercise Progress**: Set-level completion tracking for each exercise
+  - **Smart Completion Detection**: Automatically detects fully completed exercises and workouts
+  - **Responsive Design**: Adapts to different screen sizes with grid layouts
+  - **Progress Bars**: Visual progress indicators with color-coded completion badges
+- **Statistics Tracked**:
+  - Workouts: Completed/Planned with completion percentage
+  - Exercises: Individual exercise completion across all workouts
+  - Sets: Granular set-level completion tracking
+  - Duration: Actual vs planned workout time
+  - Exercise Types: Breakdown by exercise category (Strength, Cardio, etc.)
+  - Muscle Groups: Progress tracking by targeted muscle groups
+- **UX Improvements**: 
+  - Replaced static planned stats with dynamic actual progress
+  - Color-coded completion rates (green ≥90%, yellow ≥70%, orange ≥50%, red <50%)
+  - Expandable detailed statistics for power users
+  - Compact view option for smaller spaces
+- **Integration**: Seamlessly syncs with workout completion changes in real-time
+- **Architecture**: Clean separation of calculation logic and UI components
+
+### 14. Real-Time Sync Pattern
 - **Files**: `src/docs/NO_BLINKING_UPDATE_PATTERN.md`, `src/lib/mutationTracker.ts`, `src/lib/lexoRank.ts`
 - **Description**: Comprehensive real-time sync architecture for multi-device support
 - **Features**: 

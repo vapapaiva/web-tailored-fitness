@@ -88,16 +88,6 @@ export const FitnessPlanDisplay = React.memo(function FitnessPlanDisplay({
     setShowComments(false);
   }, [customComments, onRegeneratePlan]);
 
-  // Memoize weekly stats to prevent unnecessary re-renders
-  const weeklyStats = useMemo(() => ({
-    totalDuration: plan.currentMicrocycle.workouts.reduce((total, w) => total + w.estimatedDuration, 0),
-    totalWorkouts: plan.currentMicrocycle.workouts.length,
-    totalExercises: plan.currentMicrocycle.workouts.reduce((total, w) => total + w.exercises.length, 0),
-  }), [plan.currentMicrocycle.workouts]);
-  
-  // Create a stable reference to prevent re-renders during drag
-  const stableWeeklyStats = useRef(weeklyStats);
-  stableWeeklyStats.current = weeklyStats;
 
   return (
     <div className="space-y-6">
@@ -268,7 +258,6 @@ export const FitnessPlanDisplay = React.memo(function FitnessPlanDisplay({
             workouts={plan.currentMicrocycle.workouts}
             onWorkoutsChange={handleWorkoutsChange}
             onWorkoutsChangeAfterDrag={handleWorkoutsChangeAfterDrag}
-            weeklyStats={stableWeeklyStats.current}
             isEditable={true}
             isDraggingRef={isDraggingRef}
           />

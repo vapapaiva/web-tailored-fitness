@@ -20,10 +20,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { WorkoutExecutionMode } from './WorkoutExecutionMode';
 import { WorkoutCard } from './WorkoutCard';
+import { WorkoutStats } from './WorkoutStats';
 import { 
-  Clock, 
   Plus,
-  Target,
   Dumbbell
 } from 'lucide-react';
 import { useDragState } from '@/hooks/useDragState';
@@ -34,11 +33,6 @@ interface WeeklyScheduleV2Props {
   workouts: Workout[];
   onWorkoutsChange: (workouts: Workout[]) => Promise<void>;
   onWorkoutsChangeAfterDrag: (workouts: Workout[]) => Promise<void>;
-  weeklyStats: {
-    totalDuration: number;
-    totalWorkouts: number;
-    totalExercises: number;
-  };
   isEditable?: boolean;
   isDraggingRef?: React.MutableRefObject<boolean>;
 }
@@ -127,7 +121,6 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
   workouts,
   onWorkoutsChange,
   onWorkoutsChangeAfterDrag,
-  weeklyStats,
   isEditable = true,
   isDraggingRef: parentIsDraggingRef
 }: WeeklyScheduleV2Props) {
@@ -149,10 +142,6 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
   // Create a stable reference to prevent parent re-renders
   const stableOnWorkoutsChange = useRef(onWorkoutsChange);
   stableOnWorkoutsChange.current = onWorkoutsChange;
-  
-  // Create a stable reference to prevent parent re-renders
-  const stableWeeklyStats = useRef(weeklyStats);
-  stableWeeklyStats.current = weeklyStats;
   
   // Create a stable reference to prevent parent re-renders
   const stableWorkouts = useRef(workouts);
@@ -404,44 +393,8 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
         onDragOver={() => {}}
       >
         <div className="space-y-4">
-          {/* Weekly Stats - Integrated */}
-          <div className="grid grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="p-3 text-center">
-                <div className="flex items-center justify-center space-x-2">
-                  <Clock className="h-4 w-4 text-primary" />
-                  <div>
-                    <div className="text-lg font-bold">{stableWeeklyStats.current.totalDuration}m</div>
-                    <div className="text-xs text-muted-foreground">Weekly Volume</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-3 text-center">
-                <div className="flex items-center justify-center space-x-2">
-                  <Dumbbell className="h-4 w-4 text-primary" />
-                  <div>
-                    <div className="text-lg font-bold">{stableWeeklyStats.current.totalWorkouts}</div>
-                    <div className="text-xs text-muted-foreground">Workouts</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-3 text-center">
-                <div className="flex items-center justify-center space-x-2">
-                  <Target className="h-4 w-4 text-primary" />
-                  <div>
-                    <div className="text-lg font-bold">{stableWeeklyStats.current.totalExercises}</div>
-                    <div className="text-xs text-muted-foreground">Exercises</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          {/* Enhanced Weekly Stats with Actual vs Planned Progress */}
+          <WorkoutStats workouts={workouts} showDetailed={true} />
 
           {/* Daily Workout Rows */}
           <div className="space-y-3">

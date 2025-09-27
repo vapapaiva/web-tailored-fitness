@@ -241,7 +241,8 @@ export class ComprehensiveWorkoutParser {
               restTime: 90,
               notes: '',
               volumeType: parsedSet.weight ? 'sets-reps-weight' : 'sets-reps',
-              volumeRowId // All sets from the same line get the same volumeRowId
+              volumeRowId, // All sets from the same line get the same volumeRowId
+              completed: false // Explicitly set completion status for new sets
             };
             
             if (parsedSet.weight) {
@@ -268,7 +269,8 @@ export class ComprehensiveWorkoutParser {
               notes: distanceEntry.value,
               volumeType: 'distance',
               distanceUnit: distanceMatch[2] as 'km' | 'mi' | 'm',
-              volumeRowId: `volume-ex${index}-distance${distanceIndex}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+              volumeRowId: `volume-ex${index}-distance${distanceIndex}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              completed: false // Explicitly set completion status for new sets
             };
             exercise.sets.push(exerciseSet);
           }
@@ -283,7 +285,8 @@ export class ComprehensiveWorkoutParser {
             notes: parsedExercise.distance,
             volumeType: 'distance',
             distanceUnit: distanceMatch[2] as 'km' | 'mi' | 'm',
-            volumeRowId: `volume-ex${index}-distance0-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            volumeRowId: `volume-ex${index}-distance0-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            completed: false // Explicitly set completion status for new sets
           };
           exercise.sets.push(exerciseSet);
         }
@@ -298,7 +301,8 @@ export class ComprehensiveWorkoutParser {
             notes: timeEntry.value,
             volumeType: 'duration',
             duration: this.parseTimeToSeconds(timeEntry.value),
-            volumeRowId: `volume-ex${index}-time${timeIndex}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            volumeRowId: `volume-ex${index}-time${timeIndex}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            completed: false // Explicitly set completion status for new sets
           };
           exercise.sets.push(exerciseSet);
         });
@@ -310,7 +314,8 @@ export class ComprehensiveWorkoutParser {
           notes: parsedExercise.time,
           volumeType: 'duration',
           duration: this.parseTimeToSeconds(parsedExercise.time),
-          volumeRowId: `volume-ex${index}-time0-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+          volumeRowId: `volume-ex${index}-time0-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          completed: false // Explicitly set completion status for new sets
         };
         exercise.sets.push(exerciseSet);
       }
@@ -322,7 +327,8 @@ export class ComprehensiveWorkoutParser {
           restTime: 0,
           notes: '',
           volumeType: 'completion',
-          volumeRowId: `completion-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+          volumeRowId: `completion-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          completed: false // Explicitly set completion status for new sets
         });
       }
       

@@ -373,7 +373,8 @@ export function addVolumeRow(exercise: Exercise): Exercise {
     restTime: 90,
     notes: '',
     volumeType: 'sets-reps',
-    volumeRowId
+    volumeRowId,
+    completed: false // Explicitly set completion status for new sets
     // Explicitly omit optional fields to avoid undefined values
     // weight, duration, weightUnit, distanceUnit will be undefined and cleaned by sanitizeWorkoutForFirebase
   }));
