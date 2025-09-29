@@ -11,6 +11,13 @@ import {
   CheckCircle, 
   RotateCcw
 } from 'lucide-react';
+import { 
+  analyzeWorkoutCompletion, 
+  getStatusDisplayText, 
+  getStatusBadgeVariant, 
+  getStatusIcon, 
+  formatCompletionStats 
+} from '@/lib/workoutCompletion';
 
 interface WorkoutCardProps {
   workout: Workout;
@@ -94,16 +101,28 @@ export const WorkoutCard = React.memo(function WorkoutCard({
     };
   }, [clickTimeout]);
 
+  // Analyze workout completion status
+  const completionStats = analyzeWorkoutCompletion(workout);
+  const statusText = getStatusDisplayText(completionStats.status);
+  const formattedStats = formatCompletionStats(completionStats);
+
   // Status-based styling with theme support
   const getStatusStyling = () => {
-    switch (workout.status) {
+    switch (completionStats.status) {
       case 'completed':
         return {
           cardClass: 'border-green-500/20 bg-green-500/5 dark:border-green-400/20 dark:bg-green-400/5',
           statusBadge: { variant: 'default' as const, className: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-200 dark:border-green-700' },
           icon: <CheckCircle className="h-3 w-3 text-green-600 dark:text-green-400" />
         };
-      default: // 'planned'
+      case 'partially-done':
+        return {
+          cardClass: 'border-orange-500/20 bg-orange-500/5 dark:border-orange-400/20 dark:bg-orange-400/5',
+          statusBadge: { variant: 'outline' as const, className: 'border-orange-300 text-orange-700 dark:border-orange-700 dark:text-orange-300' },
+          icon: <Play className="h-3 w-3 text-orange-600 dark:text-orange-400" />
+        };
+      case 'not-started':
+      default:
         return {
           cardClass: 'border-border bg-card',
           statusBadge: { variant: 'secondary' as const, className: '' },
@@ -133,15 +152,18 @@ export const WorkoutCard = React.memo(function WorkoutCard({
               <h4 className="font-medium text-sm truncate">{workout.name}</h4>
               {statusStyling.icon}
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 flex-wrap gap-1">
               <Badge 
                 variant={statusStyling.statusBadge.variant}
                 className={`text-xs ${statusStyling.statusBadge.className}`}
               >
-                {workout.status === 'completed' ? 'Completed' : 'Planned'}
+                {statusText}
               </Badge>
               <Badge variant="secondary" className="text-xs">
-                {workout.exercises.length} exercises
+                {formattedStats.exerciseText}
+              </Badge>
+              <Badge variant="secondary" className="text-xs">
+                {formattedStats.setText}
               </Badge>
               {workout.estimatedDuration && (
                 <div className="flex items-center text-xs text-muted-foreground">

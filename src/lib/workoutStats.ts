@@ -4,6 +4,7 @@
  */
 
 import type { Workout, Exercise, ExerciseSet } from '@/types/fitness';
+import { calculateImprovedExerciseVolume } from './improvedVolumeCalculations';
 
 export interface WorkoutStats {
   // Basic completion stats
@@ -126,81 +127,74 @@ export function calculateWorkoutStats(workouts: Workout[]): WorkoutStats {
 }
 
 /**
- * Calculate detailed workout statistics with exercise type and muscle group breakdowns
+ * Calculate detailed workout statistics focused on volume tracking
+ * Uses improved volume calculations and tracks exercise progress over time
  */
-export function calculateDetailedWorkoutStats(workouts: Workout[]): DetailedWorkoutStats {
-  const basicStats = calculateWorkoutStats(workouts);
+export function calculateDetailedWorkoutStats(workouts: Workout[], userBodyweight: number = 75): DetailedWorkoutStats {
+  const basicStats = calculateWorkoutStats(workouts, userBodyweight);
   
-  // Exercise type breakdown
-  const exerciseTypes: DetailedWorkoutStats['exerciseTypes'] = {};
-  
-  // Muscle group breakdown
-  const muscleGroups: DetailedWorkoutStats['muscleGroups'] = {};
+  // Exercise-specific volume tracking
+  const exerciseVolumeStats: DetailedWorkoutStats['exerciseVolumeStats'] = {};
+  let totalVolumeAcrossAll = 0;
+  let completedVolumeAcrossAll = 0;
   
   workouts.forEach(workout => {
+    // Get workout date (assuming workout has a date field, or use current date)
+    const workoutDate = (workout as any).date || new Date().toISOString().split('T')[0];
+    
     workout.exercises.forEach(exercise => {
-      const category = exercise.category || 'Other';
-      const isCompleted = isExerciseFullyCompleted(exercise);
-      const setsCompleted = exercise.sets.filter(set => set.completed === true).length;
-      const setsPlanned = exercise.sets.length;
+      const exerciseName = exercise.name;
       
-      // Exercise type stats
-      if (!exerciseTypes[category]) {
-        exerciseTypes[category] = {
-          completed: 0,
-          planned: 0,
+      // Calculate improved volume metrics for this exercise
+      const volumeMetrics = calculateImprovedExerciseVolume(exercise, userBodyweight);
+      
+      // Initialize exercise stats if not exists
+      if (!exerciseVolumeStats[exerciseName]) {
+        exerciseVolumeStats[exerciseName] = {
+          totalVolume: 0,
+          completedVolume: 0,
+          volumeUnit: volumeMetrics.volumeUnit,
           completionRate: 0,
-          exercises: []
+          dailyVolume: {},
+          volumeMetrics: volumeMetrics
         };
       }
       
-      exerciseTypes[category].planned++;
-      if (isCompleted) {
-        exerciseTypes[category].completed++;
+      // Accumulate volume stats
+      exerciseVolumeStats[exerciseName].totalVolume += volumeMetrics.totalRelativeVolume;
+      exerciseVolumeStats[exerciseName].completedVolume += volumeMetrics.completedRelativeVolume;
+      
+      // Track daily volume
+      if (!exerciseVolumeStats[exerciseName].dailyVolume[workoutDate]) {
+        exerciseVolumeStats[exerciseName].dailyVolume[workoutDate] = {
+          planned: 0,
+          completed: 0
+        };
       }
       
-      exerciseTypes[category].exercises.push({
-        name: exercise.name,
-        completed: isCompleted,
-        setsCompleted,
-        setsPlanned,
-        completionRate: setsPlanned > 0 ? (setsCompleted / setsPlanned) * 100 : 0
-      });
+      exerciseVolumeStats[exerciseName].dailyVolume[workoutDate].planned += volumeMetrics.totalRelativeVolume;
+      exerciseVolumeStats[exerciseName].dailyVolume[workoutDate].completed += volumeMetrics.completedRelativeVolume;
       
-      // Muscle group stats
-      exercise.muscleGroups.forEach(muscleGroup => {
-        if (!muscleGroups[muscleGroup]) {
-          muscleGroups[muscleGroup] = {
-            completed: 0,
-            planned: 0,
-            completionRate: 0
-          };
-        }
-        
-        muscleGroups[muscleGroup].planned++;
-        if (isCompleted) {
-          muscleGroups[muscleGroup].completed++;
-        }
-      });
+      // Update overall totals
+      totalVolumeAcrossAll += volumeMetrics.totalRelativeVolume;
+      completedVolumeAcrossAll += volumeMetrics.completedRelativeVolume;
     });
   });
   
-  // Calculate completion rates for exercise types
-  Object.keys(exerciseTypes).forEach(category => {
-    const stats = exerciseTypes[category];
-    stats.completionRate = stats.planned > 0 ? (stats.completed / stats.planned) * 100 : 0;
-  });
-  
-  // Calculate completion rates for muscle groups
-  Object.keys(muscleGroups).forEach(muscleGroup => {
-    const stats = muscleGroups[muscleGroup];
-    stats.completionRate = stats.planned > 0 ? (stats.completed / stats.planned) * 100 : 0;
+  // Calculate completion rates for each exercise
+  Object.keys(exerciseVolumeStats).forEach(exerciseName => {
+    const stats = exerciseVolumeStats[exerciseName];
+    stats.completionRate = stats.totalVolume > 0 ? (stats.completedVolume / stats.totalVolume) * 100 : 0;
   });
 
   return {
     ...basicStats,
-    exerciseTypes,
-    muscleGroups
+    exerciseVolumeStats,
+    totalVolumeStats: {
+      totalVolume: totalVolumeAcrossAll,
+      completedVolume: completedVolumeAcrossAll,
+      completionRate: totalVolumeAcrossAll > 0 ? (completedVolumeAcrossAll / totalVolumeAcrossAll) * 100 : 0
+    }
   };
 }
 

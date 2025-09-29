@@ -44,7 +44,7 @@ export function WorkoutStats({ workouts, showDetailed = false, userBodyweight = 
   const [isExpanded, setIsExpanded] = useState(false);
   
   // Calculate basic and detailed stats
-  const basicStats = useMemo(() => calculateWorkoutStats(workouts, userBodyweight), [workouts, userBodyweight]);
+  const basicStats = useMemo(() => calculateWorkoutStats(workouts), [workouts]);
   
   const detailedStats = useMemo(() => 
     calculateDetailedWorkoutStats(workouts, userBodyweight), 
@@ -54,7 +54,7 @@ export function WorkoutStats({ workouts, showDetailed = false, userBodyweight = 
   return (
     <div className="space-y-4">
       {/* Main Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {/* Workouts */}
         <Card>
           <CardContent className="p-4">
@@ -98,9 +98,6 @@ export function WorkoutStats({ workouts, showDetailed = false, userBodyweight = 
               <Progress value={basicStats.exercises.completionRate} className="h-2" />
               <div className="text-xs text-muted-foreground">
                 {basicStats.exercises.completed} of {basicStats.exercises.planned} completed
-              </div>
-              <div className="text-xs text-muted-foreground/70 italic">
-                Fully completed exercises
               </div>
             </div>
           </CardContent>
@@ -154,6 +151,32 @@ export function WorkoutStats({ workouts, showDetailed = false, userBodyweight = 
           </CardContent>
         </Card>
 
+        {/* Volume */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">Volume</span>
+                </div>
+                <Badge 
+                  variant={detailedStats.totalVolumeStats.totalVolume === 0 ? "secondary" : undefined}
+                  style={getCompletionBadgeStyle(detailedStats.totalVolumeStats.completionRate)}
+                >
+                  {Math.round(detailedStats.totalVolumeStats.completionRate)}%
+                </Badge>
+              </div>
+              <Progress 
+                value={detailedStats.totalVolumeStats.completionRate} 
+                className="h-2" 
+              />
+              <div className="text-xs text-muted-foreground">
+                {formatImprovedVolume(detailedStats.totalVolumeStats.completedVolume, 'relative units')} / {formatImprovedVolume(detailedStats.totalVolumeStats.totalVolume, 'relative units')}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Detailed Stats (Expandable) */}
@@ -181,7 +204,7 @@ export function WorkoutStats({ workouts, showDetailed = false, userBodyweight = 
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {Object.entries(detailedStats.exerciseVolumeStats || {}).map(([exerciseName, stats]) => (
+                  {Object.entries(detailedStats.exerciseVolumeStats).map(([exerciseName, stats]) => (
                     <div key={exerciseName} className="space-y-3 p-4 border rounded-lg">
                       <div className="flex justify-between items-center">
                         <span className="font-medium text-base">{exerciseName}</span>
@@ -222,16 +245,11 @@ export function WorkoutStats({ workouts, showDetailed = false, userBodyweight = 
                         </div>
                       </div>
                       
-                      {/* Volume-based progress explanation */}
-                      <div className="text-xs text-muted-foreground/70 italic mt-2">
-                        Progress based on training volume - weighted sets contribute more than bodyweight sets
-                      </div>
-                      
                       {/* Daily Volume Breakdown */}
                       <div className="space-y-2">
                         <div className="text-sm font-medium">Daily Volume:</div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                          {Object.entries(stats.dailyVolume || {}).map(([date, dailyStats]) => (
+                          {Object.entries(stats.dailyVolume).map(([date, dailyStats]) => (
                             <div key={date} className="flex justify-between items-center text-xs p-2 bg-muted/20 rounded">
                               <span>{date}</span>
                               <span>
@@ -256,8 +274,8 @@ export function WorkoutStats({ workouts, showDetailed = false, userBodyweight = 
 /**
  * Compact version of workout stats for smaller spaces
  */
-export function CompactWorkoutStats({ workouts, userBodyweight = 75 }: { workouts: Workout[]; userBodyweight?: number }) {
-  const stats = useMemo(() => calculateWorkoutStats(workouts, userBodyweight), [workouts, userBodyweight]);
+export function CompactWorkoutStats({ workouts }: { workouts: Workout[] }) {
+  const stats = useMemo(() => calculateWorkoutStats(workouts), [workouts]);
 
   return (
     <div className="grid grid-cols-3 gap-2">
