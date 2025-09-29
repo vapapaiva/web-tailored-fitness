@@ -181,7 +181,7 @@ export const WorkoutCard = React.memo(function WorkoutCard({
           
           {isEditable && (
             <div className="flex items-center space-x-1 ml-2">
-              {workout.status === 'planned' && (
+              {(completionStats.status === 'not-started' || completionStats.status === 'partially-done') && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -193,27 +193,16 @@ export const WorkoutCard = React.memo(function WorkoutCard({
                 </Button>
               )}
               
-              {workout.status === 'completed' && (
-                <>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 w-6 p-0"
-                    onClick={(e) => handleButtonClick(e, () => onComplete(workout))}
-                    title="Complete workout"
-                  >
-                    <CheckCircle className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 w-6 p-0"
-                    onClick={(e) => handleButtonClick(e, () => onReset(workout))}
-                    title="Reset workout"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                  </Button>
-                </>
+              {completionStats.status === 'completed' && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0"
+                  onClick={(e) => handleButtonClick(e, () => onReset(workout))}
+                  title="Reset workout"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </Button>
               )}
             </div>
           )}

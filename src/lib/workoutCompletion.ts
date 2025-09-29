@@ -87,14 +87,17 @@ export function analyzeWorkoutCompletion(workout: Workout): WorkoutCompletionSta
   const setCompletionRate = totalSets > 0 ? (completedSets / totalSets) * 100 : 0;
   const hasAnyProgress = exercisesWithProgress > 0 || completedSets > 0;
   
-  // Determine overall status
+  // Determine overall status based on actual exercise completion
   let status: 'not-started' | 'partially-done' | 'completed';
   
-  if (workout.status === 'completed') {
+  if (exercisesCompleted === totalExercises && totalExercises > 0) {
+    // All exercises are fully completed
     status = 'completed';
   } else if (!hasAnyProgress) {
+    // No progress at all
     status = 'not-started';
   } else {
+    // Some progress but not all exercises completed
     status = 'partially-done';
   }
   
