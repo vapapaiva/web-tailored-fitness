@@ -120,7 +120,9 @@ Monday, Jan 20    Tuesday, Jan 21    Wednesday, Jan 22    Thursday, Jan 23    Fr
 5. **User reviews completed workouts** (only completed ones shown)
 6. **User adds weekly reflection** in text area
 7. **User clicks "Generate Next Week"** → Button shows loading state
-8. **System generates new week** → Dialog closes, new week appears
+8. **System saves workout history to Firebase** (see Data Persistence section)
+9. **System generates tailored next week** using AI with complete context
+10. **Dialog closes, new week appears** with proper date ranges
 
 ### **Alternative Flow:**
 - **User clicks "Back to Edit Workouts"** → Returns to main page
@@ -168,10 +170,110 @@ Monday, Jan 20    Tuesday, Jan 21    Wednesday, Jan 22    Thursday, Jan 23    Fr
 - [ ] Prevent multiple submissions during generation
 - [ ] Handle dialog close after successful generation
 
-### **Phase 5: Integration**
+### **Phase 5: Data Persistence**
+- [ ] Create Firebase `workoutHistory` collection structure
+- [ ] Implement workout history saving logic
+- [ ] Add workout history retrieval for Progress page
+- [ ] Calculate volume statistics from historical data
+
+### **Phase 6: AI Generation Enhancement**
+- [ ] Update Firebase Remote Config prompts to request explicit dates
+- [ ] Modify AI generation to include workout history context
+- [ ] Ensure AI response includes proper date ranges
+- [ ] Integrate weekly reflection into AI prompt context
+
+### **Phase 7: Integration & Testing**
 - [ ] Connect dialog to week completion logic
 - [ ] Ensure proper data flow between components
 - [ ] Test complete user flow end-to-end
+- [ ] Verify Progress page displays historical data correctly
+
+## 💾 **DATA PERSISTENCE & AI GENERATION**
+
+### **Firebase Data Storage**
+When user completes a week and clicks "Generate Next Week":
+
+#### **1. Save Workout History**
+Store completed workouts in Firebase collection: `users/{userId}/workoutHistory/{weekId}`
+
+**Document Structure:**
+```typescript
+{
+  weekId: string;           // e.g., "2025-01-20_week-1"
+  weekNumber: number;       // 1, 2, 3...
+  dateRange: {
+    start: string;          // "2025-01-20"
+    end: string;            // "2025-01-26"
+  };
+  completedWorkouts: [
+    {
+      date: string;         // "2025-01-20"
+      workoutName: string;  // "Upper Body Strength"
+      duration: number;     // minutes
+      exercises: [
+        {
+          name: string;     // "Bench Press"
+          volumeRows: [
+            {
+              sets: number;
+              reps?: number;
+              weight?: number;
+              distance?: number;
+              duration?: number;
+              unit: string; // "reps", "kg", "km", "min"
+            }
+          ]
+        }
+      ];
+      notes?: string;       // User's workout notes
+    }
+  ];
+  weeklyReflection: string; // User's weekly reflection
+  completedAt: timestamp;   // When week was completed
+}
+```
+
+#### **2. Progress Page Integration**
+- **Display workout history** from `workoutHistory` collection
+- **Calculate weekly volume stats** by exercise type and muscle group
+- **Show progression over time** with charts and trends
+- **Filter by date ranges** and exercise categories
+
+### **AI-Powered Next Week Generation**
+
+#### **Prompt Context Assembly**
+When generating next week, include in OpenAI prompt:
+
+1. **User Profile Data** (from `users/{userId}/profile`)
+2. **Current Fitness Plan Structure** (macro/meso/microcycle info)
+3. **Complete Workout History** (all previous weeks from `workoutHistory`)
+4. **Weekly Reflection** (from current week completion)
+
+#### **Critical AI Response Requirement**
+**MANDATORY**: AI response must include explicit date ranges:
+
+```json
+{
+  "weekNumber": 2,
+  "dateRange": {
+    "start": "2025-01-27",
+    "end": "2025-02-02"
+  },
+  "workouts": [...]
+}
+```
+
+**Why This Matters:**
+- Week completion button logic relies on `dateRange.end` to determine when to show
+- Without explicit dates, the system cannot properly track week boundaries
+- Ensures consistent date handling across the application
+
+#### **Prompt Enhancement Requirements**
+Update Firebase Remote Config `prompts_fitness_plan_generation` to:
+- Request explicit date ranges in response
+- Include workout history context
+- Incorporate weekly reflections for personalization
+- Consider volume progression based on completed exercises
 
 ## 🎯 **SUCCESS CRITERIA**
 
@@ -182,3 +284,7 @@ Monday, Jan 20    Tuesday, Jan 21    Wednesday, Jan 22    Thursday, Jan 23    Fr
 5. **Weekly reflection is captured** and used for next week generation
 6. **Loading states provide clear feedback** during generation process
 7. **User can navigate back** to edit workouts if needed
+8. **Workout history is permanently saved** to Firebase with complete exercise data
+9. **Progress page displays historical workouts** with volume statistics
+10. **AI generates contextually aware next week** using complete workout history
+11. **Generated weeks include explicit date ranges** for proper week boundary tracking

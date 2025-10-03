@@ -121,7 +121,7 @@ export function MicrocycleCompletion({
               {completedWorkouts.length > 0 ? (
                 <div className="space-y-3">
                   {completedWorkouts.map((workout) => (
-                    <div key={workout.id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+                    <div key={workout.id} className="flex items-center justify-between p-3 border rounded-lg bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-400">
                       <div className="flex items-center space-x-3">
                         <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
                         <div>

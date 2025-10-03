@@ -112,7 +112,7 @@ export const WorkoutCard = React.memo(function WorkoutCard({
       case 'completed':
         return {
           cardClass: 'border-green-500/20 bg-green-500/5 dark:border-green-400/20 dark:bg-green-400/5',
-          statusBadge: { variant: 'default' as const, className: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-200 dark:border-green-700' },
+          statusBadge: { variant: 'default' as const, className: 'bg-green-100 text-green-800 border-green-500 dark:bg-green-900 dark:text-green-200 dark:border-green-400' },
           icon: <CheckCircle className="h-3 w-3 text-green-600 dark:text-green-400" />
         };
       case 'partially-done':

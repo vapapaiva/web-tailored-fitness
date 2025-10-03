@@ -64,7 +64,7 @@ export function ExerciseExecutionCard({
     <Card 
       className={`relative transition-colors ${
         exerciseProgress.isCompleted 
-          ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' 
+          ? 'bg-green-50 border-green-500 dark:bg-green-950 dark:border-green-400' 
           : ''
       }`}
     >
@@ -128,7 +128,7 @@ export function ExerciseExecutionCard({
                   key={setIndex} 
                   className={`flex items-center space-x-3 p-2 border rounded transition-colors ${
                     isCompleted 
-                      ? 'bg-green-100 border-green-300 dark:bg-green-900 dark:border-green-700' 
+                      ? 'bg-green-100 border-green-500 dark:bg-green-900 dark:border-green-400' 
                       : ''
                   }`}
                 >

@@ -38,7 +38,7 @@ export function VolumeRowEditor({
     <div 
       className={`relative flex items-end gap-3 p-2 border rounded transition-colors ${
         isRowCompleted 
-          ? 'bg-green-100 border-green-300 dark:bg-green-900 dark:border-green-700' 
+          ? 'bg-green-100 border-green-500 dark:bg-green-900 dark:border-green-400' 
           : ''
       }`}
     >
