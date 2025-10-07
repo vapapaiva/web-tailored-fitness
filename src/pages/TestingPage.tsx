@@ -6,7 +6,9 @@ import { remoteConfig } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { TestTube, RotateCcw, User } from 'lucide-react';
+import { TestTube, RotateCcw, User, Calendar } from 'lucide-react';
+import { addDays, getTodayISO } from '@/lib/dateUtils';
+import { checkWeekCompletionState } from '@/lib/weekCompletionLogic';
 
 /**
  * Testing page with development and testing utilities
@@ -14,7 +16,7 @@ import { TestTube, RotateCcw, User } from 'lucide-react';
 export function TestingPage() {
   const navigate = useNavigate();
   const { user, updateProfile } = useAuthStore();
-  const { currentPlan, deletePlan } = useFitnessPlanStore();
+  const { currentPlan, deletePlan, updatePlan } = useFitnessPlanStore();
 
   const handleResetOnboarding = async () => {
     if (!user) return;
@@ -88,6 +90,43 @@ export function TestingPage() {
       alert('Failed to delete fitness plan');
     }
   };
+
+  // Week Completion Button Testing Functions
+  const setWeekDatesByEndOffset = async (endDaysOffset: number) => {
+    if (!currentPlan) {
+      alert('No fitness plan exists. Generate a plan first.');
+      return;
+    }
+
+    const today = getTodayISO();
+    const newEnd = addDays(today, endDaysOffset); // Offset for END date
+    const newStart = addDays(newEnd, -6); // 7-day week (start is 6 days before end)
+
+    const updatedPlan = {
+      ...currentPlan,
+      currentMicrocycle: {
+        ...currentPlan.currentMicrocycle,
+        dateRange: {
+          start: newStart,
+          end: newEnd
+        }
+      }
+    };
+
+    try {
+      await updatePlan(updatedPlan);
+      const state = checkWeekCompletionState(updatedPlan.currentMicrocycle);
+      alert(`Week dates updated!\n\nToday: ${today}\nNew range: ${newStart} to ${newEnd}\nButton state: ${state.state}\n\n${state.message}`);
+    } catch (error) {
+      console.error('Failed to update dates:', error);
+      alert('Failed to update dates');
+    }
+  };
+
+  const handleSetDisabledState = () => setWeekDatesByEndOffset(3); // Week ends in 3 days (future)
+  const handleSetReadyState = () => setWeekDatesByEndOffset(1); // Week ends TODAY
+  const handleSetOverdueState = () => setWeekDatesByEndOffset(-4); // Week ended 4 days ago
+  const handleSetLongGapState = () => setWeekDatesByEndOffset(-14); // Week ended 14 days ago
 
   return (
     <div className="container mx-auto p-6">
@@ -211,6 +250,72 @@ export function TestingPage() {
               <p className="text-sm text-muted-foreground">
                 Clear all profile answers or view the current profile data.
               </p>
+            </CardContent>
+          </Card>
+
+          {/* Week Completion Button Testing */}
+          <Card className="md:col-span-2 lg:col-span-3">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Calendar className="h-5 w-5" />
+                <span>Week Completion Button States</span>
+              </CardTitle>
+              <CardDescription>
+                Test different button states by adjusting the current week's date range
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                <Button 
+                  onClick={handleSetDisabledState}
+                  variant="outline"
+                  className="w-full"
+                  disabled={!currentPlan}
+                >
+                  🔒 Disabled State
+                </Button>
+                <Button 
+                  onClick={handleSetReadyState}
+                  variant="outline"
+                  className="w-full bg-green-50 dark:bg-green-950 hover:bg-green-100"
+                  disabled={!currentPlan}
+                >
+                  ✅ Ready State
+                </Button>
+                <Button 
+                  onClick={handleSetOverdueState}
+                  variant="outline"
+                  className="w-full bg-orange-50 dark:bg-orange-950 hover:bg-orange-100"
+                  disabled={!currentPlan}
+                >
+                  ⚠️ Overdue State
+                </Button>
+                <Button 
+                  onClick={handleSetLongGapState}
+                  variant="outline"
+                  className="w-full bg-red-50 dark:bg-red-950 hover:bg-red-100"
+                  disabled={!currentPlan}
+                >
+                  👋 Long Gap State
+                </Button>
+              </div>
+              <div className="text-sm space-y-2 bg-muted p-4 rounded-md">
+                <p><strong>Disabled:</strong> Week ends in 3 days (button gray, not clickable)</p>
+                <p><strong>Ready:</strong> Week ends today (button green with pulse)</p>
+                <p><strong>Overdue:</strong> Week ended 4 days ago (button orange warning)</p>
+                <p><strong>Long Gap:</strong> Week ended 14 days ago (button hidden, triggers gap recovery)</p>
+                <p className="text-muted-foreground italic mt-2">
+                  After clicking, navigate to Fitness Plan page to see the button in action!
+                </p>
+              </div>
+              {currentPlan && currentPlan.currentMicrocycle.dateRange && (
+                <div className="text-sm bg-blue-50 dark:bg-blue-950 p-4 rounded-md">
+                  <p><strong>Current Week Range:</strong></p>
+                  <p className="font-mono">{currentPlan.currentMicrocycle.dateRange.start} to {currentPlan.currentMicrocycle.dateRange.end}</p>
+                  <p className="mt-2"><strong>Current Button State:</strong></p>
+                  <p>{checkWeekCompletionState(currentPlan.currentMicrocycle).state} - {checkWeekCompletionState(currentPlan.currentMicrocycle).message}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

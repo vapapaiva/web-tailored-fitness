@@ -13,7 +13,7 @@ import {
   SortableContext,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import type { Workout } from '@/types/fitness';
+import type { Workout, DateRange } from '@/types/fitness';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -28,6 +28,7 @@ import {
 import { useDragState } from '@/hooks/useDragState';
 import { generateInitialRank } from '@/lib/lexoRank';
 import { useFitnessPlanStore } from '@/stores/fitnessPlanStore';
+import { formatDayHeader } from '@/lib/dateUtils';
 
 interface WeeklyScheduleV2Props {
   workouts: Workout[];
@@ -35,6 +36,7 @@ interface WeeklyScheduleV2Props {
   onWorkoutsChangeAfterDrag: (workouts: Workout[]) => Promise<void>;
   isEditable?: boolean;
   isDraggingRef?: React.MutableRefObject<boolean>;
+  weekDateRange?: DateRange; // NEW: Optional date range for displaying dates in day headers
 }
 
 const DAYS = [
@@ -55,7 +57,8 @@ const DroppableDay = React.memo(function DroppableDay({
   onStartWorkout,
   onCompleteWorkout,
   onResetWorkout,
-  isEditable 
+  isEditable,
+  weekDateRange
 }: { 
   day: typeof DAYS[0]; 
   workouts: Workout[]; 
@@ -63,11 +66,17 @@ const DroppableDay = React.memo(function DroppableDay({
   onCompleteWorkout: (workout: Workout) => void;
   onResetWorkout: (workout: Workout) => void;
   isEditable: boolean;
+  weekDateRange?: DateRange;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `day-${day.id}`,
     data: { dayId: day.id },
   });
+
+  // Format day header with date if weekDateRange is provided
+  const dayHeader = weekDateRange 
+    ? formatDayHeader(day.id, weekDateRange.start)
+    : day.name;
 
   // console.log('📅 DroppableDay render:', { dayName: day.name, workoutCount: workouts.length });
 
@@ -79,7 +88,7 @@ const DroppableDay = React.memo(function DroppableDay({
       }`}
     >
       <div className="mb-2">
-        <h3 className="text-sm font-medium text-center py-2">{day.name}</h3>
+        <h3 className="text-sm font-medium text-center py-2">{dayHeader}</h3>
       </div>
       
       <div className="space-y-2">
@@ -122,7 +131,8 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
   onWorkoutsChange,
   onWorkoutsChangeAfterDrag,
   isEditable = true,
-  isDraggingRef: parentIsDraggingRef
+  isDraggingRef: parentIsDraggingRef,
+  weekDateRange
 }: WeeklyScheduleV2Props) {
   const { updateWorkout } = useFitnessPlanStore();
   // LOCAL STATE: Component owns its workout layout state
@@ -410,6 +420,7 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
                   onCompleteWorkout={handleCompleteWorkout}
                   onResetWorkout={handleResetWorkout}
                   isEditable={isEditable}
+                  weekDateRange={weekDateRange}
                 />
               );
             })}

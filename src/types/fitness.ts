@@ -2,6 +2,14 @@
  * Fitness plan data types based on the OpenAI response structure
  */
 
+/**
+ * Date range for microcycles
+ */
+export interface DateRange {
+  start: string; // ISO date string: "2025-01-20"
+  end: string;   // ISO date string: "2025-01-26"
+}
+
 export interface ExerciseSet {
   reps: number;
   weight?: number;
@@ -51,6 +59,8 @@ export interface Workout {
   completedAt?: string;
   actualDuration?: number;
   notes?: string;
+  // Date assignment (calculated from dayOfWeek + week start date)
+  date?: string; // ISO date string: "2025-01-20"
   // Ranking system for drag & drop
   rank: string;
   // Mutation tracking
@@ -73,6 +83,8 @@ export interface Microcycle {
   completedAt?: string;
   completedWorkouts: CompletedWorkout[];
   weeklyNotes?: string;
+  // Date range for the microcycle (REQUIRED for week completion logic)
+  dateRange: DateRange;
 }
 
 export interface Mesocycle {
@@ -183,4 +195,49 @@ export interface GenerationRequest {
   currentDate: string;
   previousProgress?: WeeklyProgress[];
   currentPlan?: FitnessPlan;
+  weekDateRange?: DateRange; // Date range for the week being generated
+  workoutHistory?: WorkoutHistoryDocument[]; // Historical workout data for AI context
+  gapContext?: GapContext; // Context for gap recovery generation
+}
+
+/**
+ * Workout history storage types
+ */
+export interface WorkoutHistoryDocument {
+  weekId: string;
+  weekNumber: number;
+  weekFocus: string;
+  dateRange: DateRange;
+  completedWorkouts: CompletedWorkout[];
+  weeklyReflection: string;
+  completedAt: string; // ISO timestamp
+  planSnapshot: {
+    macrocycleId: string;
+    mesocycleId: string;
+    microcycleId: string;
+  };
+}
+
+/**
+ * Gap recovery types
+ */
+export interface GapContext {
+  gapDurationDays: number;
+  gapActivities?: string;
+  gapWorkouts: CompletedWorkout[];
+  lastCompletedMicrocycle?: {
+    week: number;
+    dateRange: DateRange;
+    completedWorkouts: CompletedWorkout[];
+  };
+}
+
+export interface TrainingGap {
+  gapId: string;
+  startDate: string;
+  endDate: string;
+  durationDays: number;
+  activities?: string;
+  workouts: CompletedWorkout[];
+  resumedAt: string;
 }

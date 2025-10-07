@@ -14,6 +14,25 @@ This is a fitness application built with:
 - **shadcn/ui** for beautiful, accessible UI components
 - **ESLint** for code linting
 
+## 📖 Specification Documents
+
+### **Complete App Loop UX Specification**
+- **File**: `COMPLETE_APP_LOOP_UX.md`
+- **Purpose**: Master UX specification defining the complete user journey
+- **Covers**: Initial plan generation, normal progression, gap recovery flows
+
+### **Technical Implementation Documents**
+- **Spec**: `WEEK_COMPLETION_SPEC_V2.md` - Complete UX/UI specification with all flows, prompts, and data structures
+- **Plan**: `WEEK_COMPLETION_IMPLEMENTATION_PLAN_V2.md` - 11-phase implementation plan with code examples
+- **Reference**: `GAP_ANALYSIS_AND_IMPROVEMENTS.md` - Gap analysis showing improvements from V1 to V2
+
+**CRITICAL**: When implementing week completion and progression features, ALWAYS reference these V2 documents. They cover 100% of COMPLETE_APP_LOOP_UX.md requirements including:
+- Initial plan generation (with Mon-Thu vs Fri-Sun timing logic)
+- Happy path week completion
+- Gap recovery flow (7+ days pause)
+- All 5 AI generation prompts
+- Complete Firebase data structures
+
 ## 📋 Documentation Requirements
 
 ### CRITICAL: All implementations must be documented

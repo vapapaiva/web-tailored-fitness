@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { WeeklyScheduleV2 } from './WeeklyScheduleV2';
+import { formatWeekHeader } from '@/lib/dateUtils';
 import { 
   Calendar, 
   Target, 
@@ -116,16 +117,8 @@ export const FitnessPlanDisplay = React.memo(function FitnessPlanDisplay({
                 onClick={() => setShowComments(!showComments)}
                 disabled={isGenerating}
               >
-                <MessageSquare className="h-4 w-4 mr-2" />
-                {showComments ? 'Hide' : 'Add'} Comments
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => onRegeneratePlan()}
-                disabled={isGenerating}
-              >
                 <RotateCcw className="h-4 w-4 mr-2" />
-                {isGenerating ? 'Regenerating...' : 'Regenerate'}
+                {showComments ? 'Cancel' : 'Regenerate Plan'}
               </Button>
               <Button onClick={onApprovePlan}>
                 <CheckCircle className="h-4 w-4 mr-2" />
@@ -247,7 +240,12 @@ export const FitnessPlanDisplay = React.memo(function FitnessPlanDisplay({
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Calendar className="h-5 w-5" />
-            <span>Week {plan.currentMicrocycle.week} - {plan.currentMicrocycle.focus}</span>
+            <span>
+              {plan.currentMicrocycle.dateRange 
+                ? formatWeekHeader(plan.currentMicrocycle.week, plan.currentMicrocycle.dateRange, plan.currentMicrocycle.focus)
+                : `Week ${plan.currentMicrocycle.week} - ${plan.currentMicrocycle.focus}`
+              }
+            </span>
           </CardTitle>
           <CardDescription>
             {plan.currentMicrocycle.value}
@@ -257,6 +255,7 @@ export const FitnessPlanDisplay = React.memo(function FitnessPlanDisplay({
           <WeeklyScheduleV2
             workouts={plan.currentMicrocycle.workouts}
             onWorkoutsChange={handleWorkoutsChange}
+            weekDateRange={plan.currentMicrocycle.dateRange}
             onWorkoutsChangeAfterDrag={handleWorkoutsChangeAfterDrag}
             isEditable={true}
             isDraggingRef={isDraggingRef}

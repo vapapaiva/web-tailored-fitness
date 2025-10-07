@@ -16,6 +16,8 @@ import { useAuthStore } from './authStore';
 import type { FitnessPlan, FitnessPlanResponse, GenerationRequest, CompletedWorkout } from '@/types/fitness';
 import { createMutationTracker, addPendingMutation, removePendingMutation, isOwnMutation, type MutationState } from '@/lib/mutationTracker';
 import { sanitizeWorkoutForFirebase } from '@/lib/firebaseUtils';
+import { calculateInitialWeekRange, calculateDateFromDayOfWeek } from '@/lib/dateUtils';
+import { migratePlanWithDates } from '@/lib/dateMigration';
 
 interface FitnessPlanState {
   currentPlan: FitnessPlan | null;
@@ -82,32 +84,56 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           throw new Error('OpenAI API key not configured in Firebase Remote Config. Please set the "openai_api_key" parameter.');
         }
 
+        // CRITICAL: Determine which prompt to use based on day of week
+        const today = new Date();
+        const dayOfWeek = today.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+        const isMonToThu = dayOfWeek >= 1 && dayOfWeek <= 4;
+        
+        // Mon-Thu: Generate rest of current week
+        // Fri-Sun: Generate till end of next week
+        const promptKey = isMonToThu 
+          ? 'prompts_fitness_plan_generation' 
+          : 'prompts_fitness_plan_generation_rest_of_the_week';
+        
+        console.log(`[Generation] Day of week: ${dayOfWeek}, Using prompt: ${promptKey}`);
+        
         // Get fitness plan generation prompt from Firebase Remote Config
-        const promptValue = getValue(remoteConfig, 'prompts_fitness_plan_generation');
+        const promptValue = getValue(remoteConfig, promptKey);
         const promptString = promptValue.asString();
         
         console.log('Remote Config Prompt source:', promptValue.getSource());
         console.log('Prompt available:', !!promptString);
         
         if (!promptString) {
-          throw new Error('Fitness plan generation prompts not configured in Firebase Remote Config. Please set the "prompts_fitness_plan_generation" parameter.');
+          // Fallback to default prompt if extended prompt not configured
+          console.warn(`Prompt ${promptKey} not found, falling back to default`);
+          const fallbackValue = getValue(remoteConfig, 'prompts_fitness_plan_generation');
+          const fallbackString = fallbackValue.asString();
+          if (!fallbackString) {
+            throw new Error('Fitness plan generation prompts not configured in Firebase Remote Config. Please set the "prompts_fitness_plan_generation" parameter.');
+          }
         }
 
         const promptConfig = JSON.parse(promptString);
+
+        // Calculate week date range (app does this, not AI)
+        const weekDateRange = calculateInitialWeekRange(today);
+        console.log('[Generation] Calculated week date range:', weekDateRange);
 
         // Prepare generation request
         const generationRequest: GenerationRequest = {
           userProfile: user.profile,
           customPrompt: customPrompt || '',
-          currentDate: new Date().toISOString(),
-          // TODO: Add previous progress and current plan when those features are implemented
+          currentDate: today.toISOString(),
+          weekDateRange: weekDateRange, // NEW: Pass date range to AI for context
         };
 
         // Populate the user prompt template
         const userPrompt = promptConfig.user_prompt_template
           .replace('{USER_PROFILE}', JSON.stringify(generationRequest.userProfile, null, 2))
           .replace('{CUSTOM_PROMPT}', generationRequest.customPrompt)
-          .replace('{CURRENT_DATE}', generationRequest.currentDate);
+          .replace('{CURRENT_DATE}', generationRequest.currentDate)
+          .replace('{WEEK_DATE_RANGE}', JSON.stringify(weekDateRange, null, 2));
 
         // Call OpenAI API
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -162,21 +188,45 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           throw new Error('Invalid plan response structure');
         }
 
+        console.log('[Generation] AI returned plan with', planResponse.plan.currentMicrocycle.workouts.length, 'workouts');
+
+        // CRITICAL: Assign dates to workouts (AI only returns dayOfWeek)
+        const microcycleWithDates = {
+          ...planResponse.plan.currentMicrocycle,
+          dateRange: weekDateRange, // Add date range to microcycle
+          workouts: planResponse.plan.currentMicrocycle.workouts.map(workout => {
+            const date = calculateDateFromDayOfWeek(workout.dayOfWeek, weekDateRange.start);
+            console.log(`[Generation] Assigning date ${date} to workout "${workout.name}" (dayOfWeek: ${workout.dayOfWeek})`);
+            return {
+              ...workout,
+              date
+            };
+          })
+        };
+
+        const planWithDates = {
+          ...planResponse.plan,
+          currentMicrocycle: microcycleWithDates,
+          status: 'draft' as const, // Set as draft, not approved yet
+        };
+
         // Update regeneration count if there's an existing plan
         const currentPlan = get().currentPlan;
         if (currentPlan) {
-          planResponse.plan.generationMetadata.regenerationCount = 
+          planWithDates.generationMetadata.regenerationCount = 
             currentPlan.generationMetadata.regenerationCount + 1;
         }
+
+        console.log('[Generation] Plan created with date range:', weekDateRange);
 
         // Save plan to Firestore
         const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
         await setDoc(planDocRef, sanitizeWorkoutForFirebase({
-          ...planResponse.plan,
+          ...planWithDates,
           updatedAt: serverTimestamp(),
         }));
 
-        set({ currentPlan: planResponse.plan, generating: false });
+        set({ currentPlan: planWithDates, generating: false });
 
       } catch (error) {
         console.error('Generate plan error:', error);
@@ -313,7 +363,7 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           const planData = planDoc.data() as FitnessPlan;
           
           // Migrate workouts to ensure they have status field
-          const migratedPlan = {
+          let migratedPlan = {
             ...planData,
             currentMicrocycle: {
               ...planData.currentMicrocycle,
@@ -323,6 +373,9 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
               }))
             }
           };
+
+          // CRITICAL: Migrate to add date ranges if missing (backward compatibility)
+          migratedPlan = migratePlanWithDates(migratedPlan);
           
           set({ currentPlan: migratedPlan, loading: false });
         } else {

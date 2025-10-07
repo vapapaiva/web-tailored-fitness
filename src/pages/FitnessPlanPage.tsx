@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useFitnessPlanStore, checkProfileCompleteness } from '@/stores/fitnessPlanStore';
-import type { FitnessPlan } from '@/types/fitness';
+import type { FitnessPlan, CompletedWorkout } from '@/types/fitness';
 import { useProfileConfigStore } from '@/stores/profileConfigStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PlanLoadingSkeleton } from '@/components/fitness/PlanLoadingSkeleton';
 import { FitnessPlanDisplay } from '@/components/fitness/FitnessPlanDisplay';
 import { MicrocycleCompletion } from '@/components/fitness/MicrocycleCompletion';
-import { Dumbbell, User, Sparkles, AlertCircle, CheckCircle } from 'lucide-react';
+import { WeekCompletionButton } from '@/components/fitness/WeekCompletionButton';
+import { Dumbbell, User, Sparkles, AlertCircle } from 'lucide-react';
 
 /**
  * Fitness Plan page - shows generation prompt or current plan
@@ -36,7 +37,7 @@ export function FitnessPlanPage() {
 
   const isProfileComplete = checkProfileCompleteness(user?.profile);
 
-  const handleCompleteWeek = useCallback(async (completedWorkouts: any[], weeklyNotes: string) => {
+  const handleCompleteWeek = useCallback(async (completedWorkouts: CompletedWorkout[], weeklyNotes: string) => {
     try {
       await completeMicrocycle(completedWorkouts, weeklyNotes);
       setShowMicrocycleCompletion(false);
@@ -61,9 +62,7 @@ export function FitnessPlanPage() {
   // Hybrid update: immediate local state + async Firebase persistence
   const handlePlanUpdate = useCallback(async (updatedPlan: FitnessPlan) => {
     // 1. IMMEDIATE: Update local state for smooth UX (no blinking)
-    const { currentPlan, ...rest } = useFitnessPlanStore.getState();
     useFitnessPlanStore.setState({
-      ...rest,
       currentPlan: updatedPlan
     });
 
@@ -231,18 +230,12 @@ export function FitnessPlanPage() {
         isGenerating={generating}
       />
 
-      {/* Complete Week Button */}
-      {currentPlan && currentPlan.currentMicrocycle.status === 'active' && (
-        <div className="mt-6 flex justify-center">
-          <Button
-            onClick={() => setShowMicrocycleCompletion(true)}
-            className="bg-green-600 hover:bg-green-700 text-white"
-            size="lg"
-          >
-            <CheckCircle className="h-5 w-5 mr-2" />
-            Complete Week {currentPlan.currentMicrocycle.week}
-          </Button>
-        </div>
+      {/* Smart Week Completion Button */}
+      {currentPlan && (
+        <WeekCompletionButton
+          microcycle={currentPlan.currentMicrocycle}
+          onComplete={() => setShowMicrocycleCompletion(true)}
+        />
       )}
 
       {/* Microcycle Completion Dialog */}
