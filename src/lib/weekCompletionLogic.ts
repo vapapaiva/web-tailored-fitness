@@ -18,12 +18,10 @@ export interface WeekCompletionState {
 /**
  * Check the week completion state based on microcycle data and current date
  * @param microcycle - The current microcycle to check
- * @param currentDate - The current date (defaults to now)
  * @returns WeekCompletionState with button state and messaging
  */
 export function checkWeekCompletionState(
-  microcycle: Microcycle | null,
-  currentDate: Date = new Date()
+  microcycle: Microcycle | null
 ): WeekCompletionState {
   // No microcycle or no date range
   if (!microcycle || !microcycle.dateRange) {

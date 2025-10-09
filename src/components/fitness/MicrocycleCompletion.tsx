@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { CheckCircle, Clock, Target, AlertCircle } from 'lucide-react';
+import { formatWeekHeader } from '@/lib/dateUtils';
 
 interface MicrocycleCompletionProps {
   plan: FitnessPlan;
@@ -64,16 +65,21 @@ export function MicrocycleCompletion({
     }
   };
 
+  // Format week header with dates
+  const weekTitle = plan.currentMicrocycle.dateRange 
+    ? formatWeekHeader(plan.currentMicrocycle.week, plan.currentMicrocycle.dateRange, plan.currentMicrocycle.focus)
+    : `Week ${plan.currentMicrocycle.week} - ${plan.currentMicrocycle.focus}`;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Target className="h-5 w-5" />
-            <span>Complete Week {plan.currentMicrocycle.week}</span>
+            <span>Complete Week: {weekTitle}</span>
           </DialogTitle>
           <DialogDescription>
-            Review your completed workouts and provide feedback before advancing to the next week.
+            Review your progress and add reflections. Your next week's plan will be generated based on this week's performance.
           </DialogDescription>
         </DialogHeader>
 
@@ -138,9 +144,10 @@ export function MicrocycleCompletion({
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <AlertCircle className="h-8 w-8 mx-auto mb-2" />
-                  <p>No workouts completed this week</p>
+                <div className="text-center py-8 text-muted-foreground border-2 border-dashed border-orange-500 dark:border-orange-400 rounded-lg bg-orange-50 dark:bg-orange-900/20">
+                  <AlertCircle className="h-8 w-8 mx-auto mb-2 text-orange-600 dark:text-orange-400" />
+                  <p className="font-semibold text-orange-900 dark:text-orange-300">No workouts completed this week</p>
+                  <p className="text-sm mt-1">You can still complete the week to generate your next plan</p>
                 </div>
               )}
             </CardContent>
@@ -169,23 +176,23 @@ export function MicrocycleCompletion({
 
           {/* Action Buttons */}
           <div className="flex justify-end space-x-3">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={onClose} disabled={isCompleting}>
               Cancel
             </Button>
             <Button 
               onClick={handleComplete}
-              disabled={isCompleting || completedWorkouts.length === 0}
+              disabled={isCompleting}
               className="bg-green-600 hover:bg-green-700"
             >
               {isCompleting ? (
                 <>
                   <Clock className="h-4 w-4 mr-2 animate-spin" />
-                  Completing...
+                  Generating next week...
                 </>
               ) : (
                 <>
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  Complete Week & Generate Next
+                  Complete Week & Generate Next 🚀
                 </>
               )}
             </Button>

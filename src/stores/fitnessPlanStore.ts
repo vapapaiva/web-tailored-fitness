@@ -16,8 +16,9 @@ import { useAuthStore } from './authStore';
 import type { FitnessPlan, FitnessPlanResponse, GenerationRequest, CompletedWorkout } from '@/types/fitness';
 import { createMutationTracker, addPendingMutation, removePendingMutation, isOwnMutation, type MutationState } from '@/lib/mutationTracker';
 import { sanitizeWorkoutForFirebase } from '@/lib/firebaseUtils';
-import { calculateInitialWeekRange, calculateDateFromDayOfWeek } from '@/lib/dateUtils';
+import { calculateInitialWeekRange, calculateDateFromDayOfWeek, calculateNextWeekRange } from '@/lib/dateUtils';
 import { migratePlanWithDates } from '@/lib/dateMigration';
+import { saveWorkoutHistory, extractCompletedWorkouts, getWorkoutHistory } from '@/lib/workoutHistoryService';
 
 interface FitnessPlanState {
   currentPlan: FitnessPlan | null;
@@ -667,20 +668,43 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         const batch = writeBatch(db);
         const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
         
-        batch.update(planDocRef, {
+        batch.update(planDocRef, sanitizeWorkoutForFirebase({
           [`currentMicrocycle`]: updatedMicrocycle,
           updatedAt: serverTimestamp(),
-        });
+        }));
 
         await batch.commit();
 
-        // 3. Generate next microcycle
+        // 3. Save workout history to Firebase (Phase 6)
+        try {
+          const completedWorkoutsData = extractCompletedWorkouts(updatedMicrocycle);
+          
+          await saveWorkoutHistory(
+            user.uid,
+            updatedMicrocycle,
+            weeklyNotes,
+            {
+              macrocycleId: currentPlan.macrocycle.id,
+              mesocycleId: currentPlan.macrocycle.mesocycles[0]?.id || 'unknown',
+              microcycleId: updatedMicrocycle.id
+            }
+          );
+          
+          console.log('[Week Completion] Workout history saved successfully');
+        } catch (historyError) {
+          console.error('[Week Completion] Failed to save workout history:', historyError);
+          // Don't fail the whole completion if history save fails
+        }
+
+        // 4. Generate next microcycle
+        console.log('[Week Completion] Week marked as complete. Generating next week...');
         await get().generateNextMicrocycle(completedWorkouts, weeklyNotes);
 
       } catch (error) {
         console.error('Failed to complete microcycle:', error);
         set({ 
-          error: error instanceof Error ? error.message : 'Failed to complete microcycle'
+          error: error instanceof Error ? error.message : 'Failed to complete microcycle',
+          loading: false
         });
       }
     },
@@ -690,41 +714,84 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
       const authStore = useAuthStore.getState();
       const { user } = authStore;
       
-      if (!user || !currentPlan) return;
+      if (!user || !currentPlan || !currentPlan.currentMicrocycle.dateRange) {
+        console.error('[Next Week Generation] Missing required data');
+        return;
+      }
 
       try {
-        set({ loading: true, error: null });
+        set({ generating: true, error: null });
+        console.log('[Next Week Generation] Starting generation...');
 
-        // Get user profile for generation
+        // 1. Get user profile
         const profileDoc = await getDoc(doc(db, 'users', user.uid, 'profile', 'data'));
         const userProfile = profileDoc.exists() ? profileDoc.data() : {};
 
-        // Get Firebase Remote Config
+        // 2. Get workout history (last 8 weeks)
+        const workoutHistory = await getWorkoutHistory(user.uid, { limit: 8 });
+        console.log('[Next Week Generation] Retrieved', workoutHistory.length, 'weeks of history');
+
+        // 3. Calculate next week date range
+        const nextWeekDateRange = calculateNextWeekRange(currentPlan.currentMicrocycle.dateRange);
+        console.log('[Next Week Generation] Next week:', nextWeekDateRange);
+
+        // 4. Get Firebase Remote Config prompt
         await fetchAndActivate(remoteConfig);
         
         const openaiApiKey = getValue(remoteConfig, 'openai_api_key').asString();
-        const fitnessPlanPrompt = getValue(remoteConfig, 'prompts_fitness_plan_generation').asString();
+        const promptValue = getValue(remoteConfig, 'prompts_fitness_plan_generate_next_microcycle');
+        const promptString = promptValue.asString();
 
-        if (!openaiApiKey || !fitnessPlanPrompt) {
-          throw new Error('OpenAI API key or fitness plan prompt not configured');
+        if (!openaiApiKey) {
+          throw new Error('OpenAI API key not configured in Firebase Remote Config');
         }
 
-        // Prepare generation request
-        const generationRequest: GenerationRequest = {
-          userProfile,
-          customPrompt: `Previous week completed: ${weeklyNotes}\n\nCompleted workouts: ${JSON.stringify(completedWorkouts, null, 2)}\n\nGenerate the next microcycle based on this progress.`,
-          currentDate: new Date().toISOString(),
-          previousProgress: [{
-            week: currentPlan.currentMicrocycle.week,
-            startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            endDate: new Date().toISOString(),
-            workouts: completedWorkouts,
-            weeklyNotes,
-          }],
-          currentPlan,
+        if (!promptString) {
+          throw new Error('prompts_fitness_plan_generate_next_microcycle not configured in Firebase Remote Config. Please add it to continue.');
+        }
+
+        const promptConfig = JSON.parse(promptString);
+
+        // 5. Prepare context for AI
+        const previousMicrocyclePlanned = {
+          week: currentPlan.currentMicrocycle.week,
+          focus: currentPlan.currentMicrocycle.focus,
+          dateRange: currentPlan.currentMicrocycle.dateRange,
+          workouts: currentPlan.currentMicrocycle.workouts.map(w => ({
+            id: w.id,
+            name: w.name,
+            dayOfWeek: w.dayOfWeek,
+            exercises: w.exercises.map(e => ({
+              name: e.name,
+              sets: e.sets
+            }))
+          }))
         };
 
-        // Call OpenAI API
+        const previousMicrocycleActual = {
+          completedWorkouts,
+          weeklyReflection: weeklyNotes,
+          completionRate: currentPlan.currentMicrocycle.workouts.length > 0 
+            ? (completedWorkouts.length / currentPlan.currentMicrocycle.workouts.length) * 100 
+            : 0
+        };
+
+        // 6. Populate prompt template
+        const userPrompt = promptConfig.user_prompt_template
+          .replace('{USER_PROFILE}', JSON.stringify(userProfile, null, 2))
+          .replace('{CURRENT_DATE}', new Date().toISOString())
+          .replace('{NEXT_WEEK_DATE_RANGE}', JSON.stringify(nextWeekDateRange, null, 2))
+          .replace('{NEXT_WEEK_NUMBER}', String(currentPlan.currentMicrocycle.week + 1))
+          .replace('{MACROCYCLE}', JSON.stringify(currentPlan.macrocycle, null, 2))
+          .replace('{MESOCYCLE}', JSON.stringify(currentPlan.macrocycle.mesocycles[0] || {}, null, 2))
+          .replace('{PREVIOUS_MICROCYCLE_PLANNED}', JSON.stringify(previousMicrocyclePlanned, null, 2))
+          .replace('{PREVIOUS_MICROCYCLE_ACTUAL}', JSON.stringify(previousMicrocycleActual, null, 2))
+          .replace('{WEEKLY_REFLECTION}', weeklyNotes)
+          .replace('{WORKOUT_HISTORY}', JSON.stringify(workoutHistory, null, 2));
+
+        console.log('[Next Week Generation] Calling OpenAI API...');
+
+        // 7. Call OpenAI API
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -732,15 +799,15 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
             'Authorization': `Bearer ${openaiApiKey}`,
           },
           body: JSON.stringify({
-            model: 'gpt-4',
+            model: 'gpt-4o',
             messages: [
               {
                 role: 'system',
-                content: fitnessPlanPrompt,
+                content: promptConfig.system_prompt,
               },
               {
                 role: 'user',
-                content: JSON.stringify(generationRequest, null, 2),
+                content: userPrompt,
               },
             ],
             temperature: 0.7,
@@ -749,7 +816,8 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         });
 
         if (!response.ok) {
-          throw new Error(`OpenAI API error: ${response.statusText}`);
+          const errorText = await response.text();
+          throw new Error(`OpenAI API error: ${response.statusText} - ${errorText}`);
         }
 
         const data = await response.json();
@@ -759,38 +827,67 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           throw new Error('No content received from OpenAI API');
         }
 
-        // Parse the response
-        const fitnessPlanResponse: FitnessPlanResponse = JSON.parse(content);
-        const newPlan = fitnessPlanResponse.plan;
+        console.log('[Next Week Generation] Received response from OpenAI');
 
-        // Update the current microcycle with the new one
-        const updatedPlan = {
-          ...currentPlan,
-          currentMicrocycle: {
-            ...newPlan.currentMicrocycle,
-            status: 'active' as const,
-            completedWorkouts: [],
-          },
+        // 8. Clean and parse the JSON response (remove markdown formatting if present)
+        let cleanContent = content.trim();
+        
+        // Remove markdown code blocks if present
+        if (cleanContent.startsWith('```json')) {
+          cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanContent.startsWith('```')) {
+          cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        
+        console.log('[Next Week Generation] Cleaned response:', cleanContent.substring(0, 200) + '...');
+        
+        const fitnessPlanResponse: FitnessPlanResponse = JSON.parse(cleanContent);
+        
+        if (!fitnessPlanResponse.plan || !fitnessPlanResponse.plan.currentMicrocycle) {
+          throw new Error('Invalid response format from AI');
+        }
+
+        // 9. Assign dates to workouts
+        const microcycleWithDates = {
+          ...fitnessPlanResponse.plan.currentMicrocycle,
+          week: currentPlan.currentMicrocycle.week + 1,
+          dateRange: nextWeekDateRange,
+          status: 'active' as const,
+          completedWorkouts: [],
+          workouts: fitnessPlanResponse.plan.currentMicrocycle.workouts.map(workout => {
+            const date = calculateDateFromDayOfWeek(workout.dayOfWeek, nextWeekDateRange.start);
+            console.log(`[Next Week Generation] Assigning date ${date} to workout "${workout.name}"`);
+            return {
+              ...workout,
+              date,
+              status: 'planned' as const
+            };
+          })
         };
 
-        set({ currentPlan: updatedPlan, loading: false });
+        // 10. Update plan
+        const updatedPlan = {
+          ...currentPlan,
+          currentMicrocycle: microcycleWithDates,
+          status: 'draft' as const, // New week needs approval
+        };
 
-        // Persist to Firebase
-        const batch = writeBatch(db);
+        set({ currentPlan: updatedPlan, generating: false });
+
+        // 11. Persist to Firebase
         const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
-        
-        batch.set(planDocRef, {
+        await setDoc(planDocRef, sanitizeWorkoutForFirebase({
           ...updatedPlan,
           updatedAt: serverTimestamp(),
-        });
+        }));
 
-        await batch.commit();
+        console.log('[Next Week Generation] Successfully generated week', microcycleWithDates.week);
 
       } catch (error) {
-        console.error('Failed to generate next microcycle:', error);
+        console.error('[Next Week Generation] Failed:', error);
         set({ 
-          loading: false,
-          error: error instanceof Error ? error.message : 'Failed to generate next microcycle'
+          generating: false,
+          error: error instanceof Error ? error.message : 'Failed to generate next week'
         });
       }
     },

@@ -503,15 +503,18 @@ export const WeeklyScheduleV2 = React.memo(function WeeklyScheduleV2({
             handleCompleteWorkout(currentWorkout);
           }}
           onWorkoutUpdate={(updatedWorkout) => {
-            // Update local state
-            const updatedWorkouts = localWorkouts.map(w => 
-              w.id === updatedWorkout.id ? updatedWorkout : w
-            );
-            setLocalWorkouts(updatedWorkouts);
-            syncToParent(updatedWorkouts);
-            
-            // Update executing workout to reflect the changes
-            setExecutingWorkout(updatedWorkout);
+            // Use startTransition to prevent setState-during-render warning
+            startTransition(() => {
+              // Update local state
+              const updatedWorkouts = localWorkouts.map(w => 
+                w.id === updatedWorkout.id ? updatedWorkout : w
+              );
+              setLocalWorkouts(updatedWorkouts);
+              syncToParent(updatedWorkouts);
+              
+              // Update executing workout to reflect the changes
+              setExecutingWorkout(updatedWorkout);
+            });
           }}
           onWorkoutDelete={(workoutId) => {
             // Delete workout from local state

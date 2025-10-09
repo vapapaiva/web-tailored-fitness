@@ -6,9 +6,11 @@ import { remoteConfig } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { TestTube, RotateCcw, User, Calendar } from 'lucide-react';
+import { TestTube, RotateCcw, User, Calendar, History } from 'lucide-react';
 import { addDays, getTodayISO } from '@/lib/dateUtils';
 import { checkWeekCompletionState } from '@/lib/weekCompletionLogic';
+import { getWorkoutHistory } from '@/lib/workoutHistoryService';
+import { useState } from 'react';
 
 /**
  * Testing page with development and testing utilities
@@ -17,6 +19,7 @@ export function TestingPage() {
   const navigate = useNavigate();
   const { user, updateProfile } = useAuthStore();
   const { currentPlan, deletePlan, updatePlan } = useFitnessPlanStore();
+  const [historyCount, setHistoryCount] = useState<number | null>(null);
 
   const handleResetOnboarding = async () => {
     if (!user) return;
@@ -127,6 +130,30 @@ export function TestingPage() {
   const handleSetReadyState = () => setWeekDatesByEndOffset(1); // Week ends TODAY
   const handleSetOverdueState = () => setWeekDatesByEndOffset(-4); // Week ended 4 days ago
   const handleSetLongGapState = () => setWeekDatesByEndOffset(-14); // Week ended 14 days ago
+
+  // Workout History Testing
+  const handleCheckWorkoutHistory = async () => {
+    if (!user) {
+      alert('No user logged in');
+      return;
+    }
+
+    try {
+      const history = await getWorkoutHistory(user.uid);
+      setHistoryCount(history.length);
+      
+      const historyDetails = history.map(h => 
+        `Week ${h.weekNumber} (${h.dateRange.start} to ${h.dateRange.end}): ${h.completedWorkouts.length} workouts`
+      ).join('\n');
+      
+      alert(`Workout History Retrieved!\n\nTotal weeks: ${history.length}\n\n${historyDetails || 'No history found'}`);
+      
+      console.log('[Testing] Full workout history:', history);
+    } catch (error) {
+      console.error('Failed to retrieve workout history:', error);
+      alert('Failed to retrieve workout history');
+    }
+  };
 
   return (
     <div className="container mx-auto p-6">
@@ -253,6 +280,39 @@ export function TestingPage() {
             </CardContent>
           </Card>
 
+          {/* Workout History Testing */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <History className="h-5 w-5" />
+                <span>Workout History</span>
+              </CardTitle>
+              <CardDescription>
+                Test workout history persistence and retrieval
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button 
+                onClick={handleCheckWorkoutHistory}
+                variant="default"
+                className="w-full"
+              >
+                Check Workout History
+              </Button>
+              {historyCount !== null && (
+                <div className="text-sm bg-blue-50 dark:bg-blue-950 p-4 rounded-md">
+                  <p><strong>History Count:</strong> {historyCount} week(s)</p>
+                  <p className="text-muted-foreground mt-1">
+                    Complete a week to add to history. Check console for full details.
+                  </p>
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground">
+                This will retrieve all saved workout history from Firebase. History is automatically saved when you complete a week.
+              </p>
+            </CardContent>
+          </Card>
+
           {/* Week Completion Button Testing */}
           <Card className="md:col-span-2 lg:col-span-3">
             <CardHeader>
@@ -306,6 +366,13 @@ export function TestingPage() {
                 <p><strong>Long Gap:</strong> Week ended 14 days ago (button hidden, triggers gap recovery)</p>
                 <p className="text-muted-foreground italic mt-2">
                   After clicking, navigate to Fitness Plan page to see the button in action!
+                </p>
+              </div>
+              <div className="text-sm bg-orange-50 dark:bg-orange-950 border border-orange-500 dark:border-orange-400 p-4 rounded-md">
+                <p className="font-semibold text-orange-900 dark:text-orange-300">⚠️ Warning: Testing Buttons Override Dates</p>
+                <p className="text-orange-800 dark:text-orange-400 mt-1">
+                  These buttons will overwrite your current week's date range. Use ONLY for testing button states on the first week. 
+                  Once you're progressing through weeks naturally (Week 2, 3, etc.), do NOT use these buttons as they will disrupt your progression.
                 </p>
               </div>
               {currentPlan && currentPlan.currentMicrocycle.dateRange && (
