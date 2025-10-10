@@ -38,6 +38,7 @@ interface ExerciseExecutionCardProps {
   handleInputBlur: (exerciseId: string, setIndex: number, field: string, defaultValue: number) => void;
   handleVolumeRowInputChange: (exerciseId: string, rowIndex: number, field: string, value: string) => void;
   handleVolumeRowInputBlur: (exerciseId: string, rowIndex: number, field: string, defaultValue: number) => void;
+  isGapRecovery?: boolean;
 }
 
 export function ExerciseExecutionCard({
@@ -57,7 +58,8 @@ export function ExerciseExecutionCard({
   handleInputChange,
   handleInputBlur,
   handleVolumeRowInputChange,
-  handleVolumeRowInputBlur
+  handleVolumeRowInputBlur,
+  isGapRecovery = false
 }: ExerciseExecutionCardProps) {
   
   return (
@@ -71,11 +73,13 @@ export function ExerciseExecutionCard({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center space-x-2">
-            <Checkbox
-              checked={exerciseProgress.isCompleted}
-              onCheckedChange={() => onToggleExerciseCompletion(exercise.id)}
-              className="mt-1"
-            />
+            {!isGapRecovery && (
+              <Checkbox
+                checked={exerciseProgress.isCompleted}
+                onCheckedChange={() => onToggleExerciseCompletion(exercise.id)}
+                className="mt-1"
+              />
+            )}
             <Input
               value={exercise.name}
               onChange={(e) => onUpdateExercise(exercise.id, { name: e.target.value })}
@@ -132,10 +136,12 @@ export function ExerciseExecutionCard({
                       : ''
                   }`}
                 >
-                  <Checkbox
-                    checked={isCompleted}
-                    onCheckedChange={() => onToggleSetCompletion(exercise.id, actualSetIndex)}
-                  />
+                  {!isGapRecovery && (
+                    <Checkbox
+                      checked={isCompleted}
+                      onCheckedChange={() => onToggleSetCompletion(exercise.id, actualSetIndex)}
+                    />
+                  )}
                   <span className="text-sm w-8">#{setIndex + 1}</span>
                   
                   {/* Reps field - only show for sets-reps and sets-reps-weight types */}
@@ -254,6 +260,7 @@ export function ExerciseExecutionCard({
                 getVolumeRowValue={getVolumeRowValue}
                 handleVolumeRowInputChange={handleVolumeRowInputChange}
                 handleVolumeRowInputBlur={handleVolumeRowInputBlur}
+                isGapRecovery={isGapRecovery}
               />
             ))}
             

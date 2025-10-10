@@ -14,6 +14,7 @@ import { FitnessPlanPage } from '@/pages/FitnessPlanPage';
 import { ProgressPage } from '@/pages/ProgressPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { TestingPage } from '@/pages/TestingPage';
+import { GapRecoveryPage } from '@/pages/GapRecoveryPage';
 
 /**
  * Main App component with routing and authentication logic
@@ -100,6 +101,7 @@ function App() {
           <Route path="progress" element={<ProgressPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="testing" element={<TestingPage />} />
+          <Route path="gap-recovery" element={<GapRecoveryPage />} />
         </Route>
         
         {/* Catch all route */}

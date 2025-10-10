@@ -6,25 +6,28 @@ interface WorkoutExecutionTextProps {
   textEditorValue: string;
   onTextChange: (value: string) => void;
   textAreaRef?: RefObject<HTMLTextAreaElement | null>;
+  isGapRecovery?: boolean;
 }
 
-export function WorkoutExecutionText({ textEditorValue, onTextChange, textAreaRef }: WorkoutExecutionTextProps) {
+export function WorkoutExecutionText({ textEditorValue, onTextChange, textAreaRef, isGapRecovery = false }: WorkoutExecutionTextProps) {
   return (
     <div className="space-y-2">
       <Label htmlFor="workout-text" className="text-sm font-medium">
-        Workout Text (with progress tracking)
+        {isGapRecovery ? "Workout Text" : "Workout Text (with progress tracking)"}
       </Label>
       <Textarea
         ref={textAreaRef}
         id="workout-text"
         value={textEditorValue}
         onChange={(e) => onTextChange(e.target.value)}
-        placeholder="Edit workout text with progress indicators..."
+        placeholder={isGapRecovery ? "Edit workout text..." : "Edit workout text with progress indicators..."}
         className="min-h-[400px] font-mono text-sm"
       />
-      <p className="text-xs text-muted-foreground">
-        Use + symbols to mark completed sets. Example: "3x10x25kg +++" means all 3 sets completed.
-      </p>
+      {!isGapRecovery && (
+        <p className="text-xs text-muted-foreground">
+          Use + symbols to mark completed sets. Example: "3x10x25kg +++" means all 3 sets completed.
+        </p>
+      )}
     </div>
   );
 }

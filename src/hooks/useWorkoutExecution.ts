@@ -9,17 +9,19 @@ interface WorkoutExecutionState {
 interface UseWorkoutExecutionProps {
   initialWorkout: Workout;
   onWorkoutUpdate: (workout: Workout) => void;
+  isGapRecovery?: boolean;
 }
 
 /**
  * Custom hook for managing workout execution state
  */
-export function useWorkoutExecution({ initialWorkout, onWorkoutUpdate }: UseWorkoutExecutionProps) {
+export function useWorkoutExecution({ initialWorkout, onWorkoutUpdate, isGapRecovery = false }: UseWorkoutExecutionProps) {
   const [executionState, setExecutionState] = useState<WorkoutExecutionState>(() => ({
     workout: initialWorkout,
     progress: initialWorkout.exercises.reduce((acc, exercise) => {
-      // Initialize progress from actual set completion status
-      acc[exercise.id] = exercise.sets.map(set => set.completed || false);
+      // Gap recovery mode: mark all sets as complete by default
+      // Normal mode: use actual set completion status
+      acc[exercise.id] = exercise.sets.map(set => isGapRecovery ? true : (set.completed || false));
       return acc;
     }, {} as { [exerciseId: string]: boolean[] })
   }));
@@ -27,8 +29,9 @@ export function useWorkoutExecution({ initialWorkout, onWorkoutUpdate }: UseWork
   // Sync execution state when workout prop changes
   useEffect(() => {
     const newProgress = initialWorkout.exercises.reduce((acc, exercise) => {
-      // Always load progress from the actual workout data (database state)
-      acc[exercise.id] = exercise.sets.map(set => set.completed || false);
+      // Gap recovery mode: mark all sets as complete by default
+      // Normal mode: load progress from actual workout data (database state)
+      acc[exercise.id] = exercise.sets.map(set => isGapRecovery ? true : (set.completed || false));
       return acc;
     }, {} as { [exerciseId: string]: boolean[] });
     
@@ -36,7 +39,7 @@ export function useWorkoutExecution({ initialWorkout, onWorkoutUpdate }: UseWork
       workout: initialWorkout,
       progress: newProgress
     });
-  }, [initialWorkout]);
+  }, [initialWorkout, isGapRecovery]);
 
   const updateProgress = useCallback((exerciseId: string, setIndex: number, completed: boolean) => {
     setExecutionState(prev => {
@@ -126,7 +129,8 @@ export function useWorkoutExecution({ initialWorkout, onWorkoutUpdate }: UseWork
     
     newWorkout.exercises.forEach(exercise => {
       const existingProgress = executionState.progress[exercise.id] || [];
-      const newProgressArray = new Array(exercise.sets.length).fill(false);
+      // Gap recovery mode: fill with true, Normal mode: fill with false
+      const newProgressArray = new Array(exercise.sets.length).fill(isGapRecovery);
       
       for (let i = 0; i < Math.min(existingProgress.length, newProgressArray.length); i++) {
         newProgressArray[i] = existingProgress[i];
@@ -140,7 +144,7 @@ export function useWorkoutExecution({ initialWorkout, onWorkoutUpdate }: UseWork
       progress: newProgress
     });
     onWorkoutUpdate(newWorkout);
-  }, [executionState.progress, onWorkoutUpdate]);
+  }, [executionState.progress, onWorkoutUpdate, isGapRecovery]);
 
   const toggleSetCompletion = useCallback((exerciseId: string, setIndex: number) => {
     const currentProgress = executionState.progress[exerciseId] || [];

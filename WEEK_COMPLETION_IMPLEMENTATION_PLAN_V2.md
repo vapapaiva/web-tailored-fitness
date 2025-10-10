@@ -1039,18 +1039,27 @@ completeMicrocycle: async (completedWorkouts: CompletedWorkout[], weeklyNotes: s
 ---
 
 ## **PHASE 7: Next Week Generation with History** 
-*Duration: 2 days | Priority: HIGH* | **STATUS: ⏳ READY TO START**
+*Duration: 2 days | Priority: HIGH* | **STATUS: ✅ COMPLETED**
 
-### **Current State**
-**Stubbed in Phase 5:** `completeMicrocycle` function marks week as complete but does NOT call `generateNextMicrocycle`. Console logs: "[Week Completion] Week marked as complete. Next week generation will be implemented in Phase 7."
+### **Implementation Status**
+**Completed:** Full next week generation with workout history context, proper date calculation, AI prompt population, and plan approval flow. Happy path (initial plan → complete week → generate next week → repeat) is now fully functional.
 
-**What Needs to Be Done:**
-1. Create and upload `prompts_fitness_plan_generate_next_microcycle` to Firebase Remote Config
-2. Un-stub `generateNextMicrocycle` to use the proper prompt
-3. Calculate next week date range properly
-4. Include workout history context
-5. Assign dates to generated workouts
-6. Update UI to show new week after completion
+**Key Features Implemented:**
+1. ✅ `calculateNextWeekRange()` utility in `dateUtils.ts` - calculates proper 7-day forward progression
+2. ✅ Complete rewrite of `generateNextMicrocycle()` with proper prompt fetching from Firebase Remote Config
+3. ✅ Workout history retrieval (last 8 weeks) integrated into generation
+4. ✅ Prompt template population with full context (profile, history, performance, reflection)
+5. ✅ Markdown code block stripping (handles AI responses wrapped in ```json)
+6. ✅ Date assignment to generated workouts
+7. ✅ Plan status set to 'draft' requiring approval
+8. ✅ UI updated with proper button text and loading states
+
+**Testing Results:**
+- Week 1 → Week 2 generation: ✅ Success
+- Week 2 → Week 3 generation: ✅ Success
+- Workout history accumulation: ✅ Working (1 week, then 2 weeks)
+- Date progression: ✅ Correct (Oct 2-8 → Oct 9-15 → Oct 16-22)
+- AI context: ✅ Includes performance, reflection, and history
 
 ### **Objective**
 Generate next week using workout history context.
@@ -1203,7 +1212,79 @@ generateNextMicrocycle: async (completedWorkouts: CompletedWorkout[], weeklyNote
 ---
 
 ## **PHASE 8: Gap Recovery Flow (CRITICAL)** 
-*Duration: 3-4 days | Priority: CRITICAL*
+*Duration: 3-4 days | Priority: CRITICAL* | **STATUS: ✅ COMPLETED + ENHANCED**
+
+### **Implementation Status**
+**Completed:** Full-page gap recovery experience with automatic navigation, advanced workout management, proper profile editing component reuse, and fresh plan generation.
+
+**Key Features Implemented:**
+1. ✅ `GapRecoveryPage` - Full-page dedicated gap recovery experience (not a popup)
+2. ✅ `useGapDetection` hook - Automatic detection and navigation to `/app/gap-recovery`
+3. ✅ **Enhanced Workout Management**:
+   - Shows completed workouts from last microcycle as compact cards
+   - Add single workout button (opens `WorkoutExecutionMode`)
+   - Add multiple workouts via bulk text entry
+   - Edit workouts by clicking cards (opens editor)
+   - Delete workouts from list
+   - Workouts sorted by date (oldest first)
+   - All workouts automatically marked as complete (no checkboxes)
+4. ✅ **Proper Profile Editing (Component Reuse)**:
+   - Uses `CollapsibleChoiceField` for single/multiple choice (same as ProfilePage)
+   - Shows selected values with "Edit" button (not expanded)
+   - Uses `FormField` for other field types
+   - Real-time editing with validation
+   - Must save changes before generating plan
+5. ✅ **Workout Editor Integration**:
+   - `WorkoutExecutionMode` with `isGapRecovery={true}` prop
+   - Hides all checkboxes (exercise-level and set-level)
+   - Hides progress bar and completion UI
+   - Supports both UI and Text editing modes
+   - All exercises automatically considered complete
+6. ✅ **Bulk Text Entry**:
+   - `gapWorkoutParser.ts` - Parses workout text with dates
+   - Format: `# Workout Name dd-mm-yyyy`
+   - Supports 3 date formats (dd-mm-yyyy, dd.mm.yyyy, dd/mm/yyyy)
+   - Reuses existing `ComprehensiveWorkoutParser` for exercises
+7. ✅ **Compact Workout Display**:
+   - `GapWorkoutCard.tsx` - Shows name + date + exercise count
+   - Click to edit, trash icon to delete
+   - No completion badges or progress indicators
+8. ✅ `generateGapRecoveryPlan()` in store - Full gap recovery generation logic
+9. ✅ Gap record persistence to Firebase `trainingGaps` collection
+10. ✅ Smart prompt selection (Mon-Thu vs Fri-Sun logic)
+11. ✅ Workout history context (up to 6 months)
+12. ✅ Auto-approval of recovery plans
+13. ✅ Navigation: Redirects to fitness plan page after successful generation
+14. ✅ Dependencies installed (date-fns for "X days ago" formatting)
+
+**Component Architecture:**
+- **Replaced**: `GapRecoveryDialog` (small popup) → `GapRecoveryPage` (full-page)
+- **Reused**: `CollapsibleChoiceField`, `FormField` from ProfilePage
+- **Enhanced**: `WorkoutExecutionMode`, `WorkoutExecutionUI`, `WorkoutExecutionText`, `ExerciseExecutionCard` with `isGapRecovery` mode
+- **Created**: `GapWorkoutCard`, `gapWorkoutParser`
+
+**Files Modified:**
+- `src/pages/GapRecoveryPage.tsx` - Complete rebuild with proper component reuse
+- `src/hooks/useGapDetection.ts` - Navigation instead of dialog
+- `src/components/fitness/WorkoutExecutionMode.tsx` - Added `isGapRecovery` prop
+- `src/components/fitness/WorkoutExecutionUI.tsx` - Pass through `isGapRecovery`
+- `src/components/fitness/WorkoutExecutionText.tsx` - Conditional labels
+- `src/components/fitness/ExerciseExecutionCard.tsx` - Hide checkboxes when `isGapRecovery={true}`
+
+**Files Created:**
+- `src/components/fitness/GapWorkoutCard.tsx` - Compact workout display
+- `src/lib/gapWorkoutParser.ts` - Parse bulk workout text with dates
+- `PHASE_8_ENHANCEMENTS.md` - Enhancement specification
+- `PHASE_8_TESTING_INSTRUCTIONS.md` - Comprehensive testing guide
+
+**Testing Instructions:**
+See `PHASE_8_TESTING_INSTRUCTIONS.md` for comprehensive 11-step testing guide covering:
+- Profile editing (collapsed choice fields with dialog)
+- Single workout add/edit/delete
+- Bulk text entry with 3 date formats
+- Workout editor (no checkboxes mode)
+- Plan generation with gap context
+- Firebase gap record verification
 
 ### **Objective**
 Implement complete gap recovery dialog for 8+ day pauses.
@@ -1329,6 +1410,43 @@ const { showGapDialog, setShowGapDialog } = useGapDetection();
 - [ ] Plan starts from correct date
 - [ ] Cannot dismiss without generating
 - [ ] Gap record saved (if implemented)
+
+---
+
+## **PHASE 8.1: Auto-Approve All Plans (UX Simplification)** 
+*Duration: 1 hour | Priority: HIGH* | **STATUS: ✅ COMPLETED**
+
+### **Objective**
+Remove plan approval friction by auto-approving all generated plans. Users can still regenerate with comments if they want changes.
+
+### **Implementation**
+**Changed:** All plan generation now sets `status: 'approved'` instead of `'draft'`
+
+**Files Modified:**
+- `src/stores/fitnessPlanStore.ts`:
+  - `generatePlan()` - Line 213: Auto-approve initial plans
+  - `generateNextMicrocycle()` - Line 874: Auto-approve next week plans  
+  - `generateGapRecoveryPlan()` - Already auto-approved
+
+**UI Impact:**
+- ❌ **Removed**: Plan approval card/dialog
+- ❌ **Removed**: "Approve Plan" button
+- ❌ **Removed**: Draft status badge
+- ✅ **Kept**: "Regenerate Plan" button for making changes
+- ✅ **Kept**: Comment system for regeneration feedback
+
+### **Benefits**
+- ✅ Faster onboarding (one less step)
+- ✅ Smoother week transitions (no approval delay)
+- ✅ Reduced friction in gap recovery
+- ✅ Users still have full control via regeneration
+
+### **Testing**
+- [x] Initial plan generation: Plan status = 'approved'
+- [x] Next week generation: Plan status = 'approved'
+- [x] Gap recovery: Plan status = 'approved'
+- [x] Regeneration still works
+- [x] No approval UI shown
 
 ---
 
@@ -1496,10 +1614,10 @@ Ensure all prompts are configured:
 2. ✅ Phase 2: Initial generation with timing
 3. ✅ Phase 3: Week display updates
 4. ✅ Phase 4: Week completion button
-5. ✅ Phase 5: Week completion dialog (next week generation stubbed)
-6. ⏳ Phase 6: Workout history persistence
-7. ⏳ Phase 7: Next week generation with history
-8. ⏳ Phase 8: Gap recovery flow
+5. ✅ Phase 5: Week completion dialog
+6. ✅ Phase 6: Workout history persistence
+7. ✅ Phase 7: Next week generation with history
+8. ✅ Phase 8: Gap recovery flow (READY FOR TESTING)
 
 **Can be deferred:**
 - Phase 9: Progress page (can use basic version)

@@ -22,6 +22,7 @@ interface WorkoutExecutionModeProps {
   onComplete: () => void;
   onWorkoutUpdate: (updatedWorkout: Workout) => void;
   onWorkoutDelete?: (workoutId: string) => void;
+  isGapRecovery?: boolean; // Gap recovery mode: no checkboxes, show date field
 }
 
 /**
@@ -33,7 +34,8 @@ export function WorkoutExecutionMode({
   onClose, 
   onComplete,
   onWorkoutUpdate,
-  onWorkoutDelete
+  onWorkoutDelete,
+  isGapRecovery = false
 }: WorkoutExecutionModeProps) {
 
   // UI state
@@ -49,7 +51,7 @@ export function WorkoutExecutionMode({
     toggleExerciseCompletion,
     getExerciseProgress,
     getOverallProgress
-  } = useWorkoutExecution({ initialWorkout: workout, onWorkoutUpdate });
+  } = useWorkoutExecution({ initialWorkout: workout, onWorkoutUpdate, isGapRecovery });
 
   const {
     textEditorValue,
@@ -61,7 +63,8 @@ export function WorkoutExecutionMode({
     workout: executionState.workout, 
     progress: executionState.progress, 
     onWorkoutAndProgressUpdate: updateWorkoutAndProgress,
-    enableRealtimeSync: true // Enable real-time sync for better UX
+    enableRealtimeSync: true, // Enable real-time sync for better UX
+    isGapRecovery // Pass gap recovery mode to mark all as complete
   });
 
   const {
@@ -93,6 +96,7 @@ export function WorkoutExecutionMode({
     if (activeTab === 'text') {
       syncUIToText();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]); // FIXED: Removed syncUIToText dependency to prevent auto-sync on state changes
 
   // Tab change handler
@@ -213,14 +217,14 @@ export function WorkoutExecutionMode({
                   const unit = set.distanceUnit || 'km';
                   updatedSet.notes = `${value}${unit}`;
                 }
-                if (field === 'weightUnit') updatedSet.weightUnit = value as any;
+                if (field === 'weightUnit') updatedSet.weightUnit = value as unknown as 'kg' | 'lb';
                 if (field === 'distanceUnit') {
-                  updatedSet.distanceUnit = value as any;
+                  updatedSet.distanceUnit = value as unknown as 'km' | 'mi' | 'm';
                   // Update notes field to reflect new unit
                   const distanceValue = parseFloat(set.notes?.replace(/[^\d.]/g, '') || '0');
                   updatedSet.notes = `${distanceValue}${value}`;
                 }
-                if (field === 'notes') updatedSet.notes = value as any;
+                if (field === 'notes') updatedSet.notes = String(value);
                 
                 // Give this set a unique volumeRowId so it appears as separate volume row
                 // This ensures that when user changes individual sets in expanded view,
@@ -289,13 +293,15 @@ export function WorkoutExecutionMode({
                 className="text-xl font-bold flex-1"
                 placeholder="Workout name"
               />
-              <Badge 
-                variant={overallProgress.isWorkoutComplete ? "default" : "outline"}
-                className={overallProgress.isWorkoutComplete ? "bg-green-600 text-white" : ""}
-              >
-                {overallProgress.completedCount}/{overallProgress.totalCount} sets
-                {overallProgress.isWorkoutComplete && " ✓"}
-              </Badge>
+              {!isGapRecovery && (
+                <Badge 
+                  variant={overallProgress.isWorkoutComplete ? "default" : "outline"}
+                  className={overallProgress.isWorkoutComplete ? "bg-green-600 text-white" : ""}
+                >
+                  {overallProgress.completedCount}/{overallProgress.totalCount} sets
+                  {overallProgress.isWorkoutComplete && " ✓"}
+                </Badge>
+              )}
             </div>
             <div className="flex items-center space-x-2">
               {onWorkoutDelete && (
@@ -311,39 +317,66 @@ export function WorkoutExecutionMode({
             </div>
           </DialogTitle>
           <DialogDescription>
-            Edit your workout using the UI editor or text editor. Track your progress by checking off completed sets.
+            {isGapRecovery 
+              ? "Add workout details for your gap recovery period."
+              : "Edit your workout using the UI editor or text editor. Track your progress by checking off completed sets."
+            }
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Gap Recovery: Show Date Field */}
+          {isGapRecovery && (
+            <div className="flex items-center space-x-4 p-4 bg-muted/30 rounded-md">
+              <Label className="text-sm font-medium">Workout Date:</Label>
+              <Input
+                type="date"
+                value={executionState.workout.date || new Date().toISOString().split('T')[0]}
+                onChange={(e) => {
+                  const updatedWorkout = { 
+                    ...executionState.workout, 
+                    date: e.target.value 
+                  };
+                  updateWorkoutStructure(updatedWorkout);
+                }}
+                className="w-48"
+              />
+              <span className="text-xs text-muted-foreground">
+                Date when you did this workout
+              </span>
+            </div>
+          )}
+
           {/* Header with workout info and progress */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
+          {!isGapRecovery && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <Label className="text-sm">Duration:</Label>
+                    <Input
+                      type="number"
+                      value={executionState.workout.estimatedDuration}
+                      onChange={(e) => {
+                        const updatedWorkout = { 
+                          ...executionState.workout, 
+                          estimatedDuration: parseInt(e.target.value) || 0 
+                        };
+                        updateWorkoutStructure(updatedWorkout);
+                      }}
+                      className="w-20 h-8"
+                    />
+                    <span className="text-sm text-muted-foreground">min</span>
+                  </div>
+                </div>
                 <div className="flex items-center space-x-2">
-                  <Label className="text-sm">Duration:</Label>
-                  <Input
-                    type="number"
-                    value={executionState.workout.estimatedDuration}
-                    onChange={(e) => {
-                      const updatedWorkout = { 
-                        ...executionState.workout, 
-                        estimatedDuration: parseInt(e.target.value) || 0 
-                      };
-                      updateWorkoutStructure(updatedWorkout);
-                    }}
-                    className="w-20 h-8"
-                  />
-                  <span className="text-sm text-muted-foreground">min</span>
+                  <Clock className="h-4 w-4" />
+                  <span className="text-sm">Progress: {Math.round(overallProgress.percentage)}%</span>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <Clock className="h-4 w-4" />
-                <span className="text-sm">Progress: {Math.round(overallProgress.percentage)}%</span>
-              </div>
+              <Progress value={overallProgress.percentage} className="h-2" />
             </div>
-            <Progress value={overallProgress.percentage} className="h-2" />
-          </div>
+          )}
 
           {/* Tabs for UI and Text editing */}
           <Tabs value={activeTab} onValueChange={handleTabChange}>
@@ -373,6 +406,7 @@ export function WorkoutExecutionMode({
                 handleInputBlur={handleInputBlur}
                 handleVolumeRowInputChange={handleVolumeRowInputChange}
                 handleVolumeRowInputBlur={handleVolumeRowInputBlur}
+                isGapRecovery={isGapRecovery}
               />
             </TabsContent>
 
@@ -381,6 +415,7 @@ export function WorkoutExecutionMode({
                 textEditorValue={textEditorValue}
                 onTextChange={setTextEditorValue}
                 textAreaRef={textAreaRef}
+                isGapRecovery={isGapRecovery}
               />
             </TabsContent>
           </Tabs>
@@ -390,37 +425,39 @@ export function WorkoutExecutionMode({
             <Button variant="outline" onClick={onClose}>
               Close
             </Button>
-            <div className="space-x-2">
-              {overallProgress.isWorkoutComplete ? (
-                <Button 
-                  onClick={() => {
-                    // Reset the workout when it's complete
-                    const resetWorkout = {
-                      ...executionState.workout,
-                      status: 'planned' as const,
-                      completedAt: undefined,
-                      exercises: executionState.workout.exercises.map(exercise => ({
-                        ...exercise,
-                        sets: exercise.sets.map(set => ({
-                          ...set,
-                          completed: false
+            {!isGapRecovery && (
+              <div className="space-x-2">
+                {overallProgress.isWorkoutComplete ? (
+                  <Button 
+                    onClick={() => {
+                      // Reset the workout when it's complete
+                      const resetWorkout = {
+                        ...executionState.workout,
+                        status: 'planned' as const,
+                        completedAt: undefined,
+                        exercises: executionState.workout.exercises.map(exercise => ({
+                          ...exercise,
+                          sets: exercise.sets.map(set => ({
+                            ...set,
+                            completed: false
+                          }))
                         }))
-                      }))
-                    };
-                    onWorkoutUpdate(resetWorkout);
-                  }}
-                  variant="outline"
-                >
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Reset Workout
-                </Button>
-              ) : (
-                <Button onClick={handleCompleteWorkout}>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Complete All & Finish
-                </Button>
-              )}
-            </div>
+                      };
+                      onWorkoutUpdate(resetWorkout);
+                    }}
+                    variant="outline"
+                  >
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reset Workout
+                  </Button>
+                ) : (
+                  <Button onClick={handleCompleteWorkout}>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Complete All & Finish
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>

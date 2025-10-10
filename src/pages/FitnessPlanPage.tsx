@@ -11,6 +11,7 @@ import { PlanLoadingSkeleton } from '@/components/fitness/PlanLoadingSkeleton';
 import { FitnessPlanDisplay } from '@/components/fitness/FitnessPlanDisplay';
 import { MicrocycleCompletion } from '@/components/fitness/MicrocycleCompletion';
 import { WeekCompletionButton } from '@/components/fitness/WeekCompletionButton';
+import { useGapDetection } from '@/hooks/useGapDetection';
 import { Dumbbell, User, Sparkles, AlertCircle } from 'lucide-react';
 
 /**
@@ -22,6 +23,9 @@ export function FitnessPlanPage() {
   const { currentPlan, loading, generating, error, generatePlan, loadPlan, clearError, approvePlan, updatePlanSilently, startRealtimeSync, stopRealtimeSync, completeMicrocycle } = useFitnessPlanStore();
   const { fetchConfig } = useProfileConfigStore();
   const [showMicrocycleCompletion, setShowMicrocycleCompletion] = useState(false);
+  
+  // Automatically redirect to gap recovery page if 7+ day gap detected
+  useGapDetection();
 
   // Load plan and config on component mount
   useEffect(() => {

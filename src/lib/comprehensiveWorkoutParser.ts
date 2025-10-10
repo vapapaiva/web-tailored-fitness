@@ -41,8 +41,8 @@ export class ComprehensiveWorkoutParser {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       
-      // Check for exercise header
-      const headerMatch = line.match(/^-+\s+(.*)$/);
+      // Check for exercise header (space after dashes is optional)
+      const headerMatch = line.match(/^-+\s*(.*)$/);
       if (headerMatch) {
         // Save previous exercise if exists
         if (currentExercise) {

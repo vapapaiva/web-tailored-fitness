@@ -10,27 +10,46 @@ export interface DateRange {
 
 /**
  * Get the Monday of the current week
+ * Works in local timezone to avoid date shifting
  * @param date - The date to get the week start for (defaults to today)
  * @returns ISO date string for Monday of the week
  */
 export function getWeekStartDate(date: Date = new Date()): string {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().split('T')[0];
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = d.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+  
+  // Calculate offset to Monday
+  const offset = day === 0 ? -6 : 1 - day; // Sunday: go back 6 days, Others: go to Monday
+  d.setDate(d.getDate() + offset);
+  
+  // Format as YYYY-MM-DD
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const dayOfMonth = String(d.getDate()).padStart(2, '0');
+  
+  return `${year}-${month}-${dayOfMonth}`;
 }
 
 /**
  * Get the Sunday of the current week
+ * Works in local timezone to avoid date shifting
  * @param date - The date to get the week end for (defaults to today)
  * @returns ISO date string for Sunday of the week
  */
 export function getWeekEndDate(date: Date = new Date()): string {
-  const startDate = new Date(getWeekStartDate(date));
-  startDate.setDate(startDate.getDate() + 6);
-  return startDate.toISOString().split('T')[0];
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = d.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+  
+  // Calculate offset to Sunday
+  const offset = day === 0 ? 0 : 7 - day; // Sunday: stay, Others: go to Sunday
+  d.setDate(d.getDate() + offset);
+  
+  // Format as YYYY-MM-DD
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const dayOfMonth = String(d.getDate()).padStart(2, '0');
+  
+  return `${year}-${month}-${dayOfMonth}`;
 }
 
 /**
@@ -47,22 +66,30 @@ export function addDays(dateStr: string, days: number): string {
 
 /**
  * Calculate initial week date range based on current day
- * Mon-Thu: Rest of current week
- * Fri-Sun: Till end of next week
+ * Mon-Thu: Current week (Monday to Sunday)
+ * Fri-Sun: Extended period (today to next Sunday)
  * 
  * @param date - The date to calculate from (defaults to today)
  * @returns DateRange object with start and end dates
  */
 export function calculateInitialWeekRange(date: Date = new Date()): DateRange {
-  const dayOfWeek = date.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+  const d = new Date(date);
+  d.setHours(12, 0, 0, 0); // Noon to avoid timezone issues
+  
+  const dayOfWeek = d.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
   const isMonToThu = dayOfWeek >= 1 && dayOfWeek <= 4;
   
-  const start = getWeekStartDate(date);
-  const end = isMonToThu 
-    ? getWeekEndDate(date) 
-    : addDays(getWeekEndDate(date), 7);
-  
-  return { start, end };
+  if (isMonToThu) {
+    // Monday-Thursday: Generate current week (Monday to Sunday)
+    const start = getWeekStartDate(d);
+    const end = getWeekEndDate(d);
+    return { start, end };
+  } else {
+    // Friday-Sunday: Generate extended period (today to next Sunday)
+    const today = d.toISOString().split('T')[0];
+    const nextSunday = addDays(getWeekEndDate(d), 7);
+    return { start: today, end: nextSunday };
+  }
 }
 
 /**
@@ -95,7 +122,7 @@ export function calculateDateFromDayOfWeek(dayOfWeek: number, weekStartDate: str
  * @param focus - The week's focus/title
  * @returns Formatted week header string
  */
-export function formatWeekHeader(weekNumber: number, dateRange: DateRange, focus: string): string {
+export function formatWeekHeader(_weekNumber: number, dateRange: DateRange, focus: string): string {
   const start = formatMonthDay(dateRange.start);
   const end = formatMonthDay(dateRange.end);
   

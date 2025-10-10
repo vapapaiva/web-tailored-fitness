@@ -7,12 +7,13 @@ interface UseTextSyncProps {
   progress: { [exerciseId: string]: boolean[] };
   onWorkoutAndProgressUpdate: (workout: Workout, progress: { [exerciseId: string]: boolean[] }) => void;
   enableRealtimeSync?: boolean; // Optional flag to enable real-time sync
+  isGapRecovery?: boolean; // Gap recovery mode: mark all exercises as complete
 }
 
 /**
  * Custom hook for managing text editor synchronization
  */
-export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate, enableRealtimeSync = false }: UseTextSyncProps) {
+export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate, enableRealtimeSync = false, isGapRecovery = false }: UseTextSyncProps) {
   const [textEditorValue, setTextEditorValue] = useState('');
   
   // Refs for debouncing and preventing sync loops
@@ -50,7 +51,10 @@ export function useTextSync({ workout, progress, onWorkoutAndProgressUpdate, ena
         const parsedExercise = parsed.workout[exerciseIndex];
         const progressArray = new Array(exercise.sets.length).fill(false);
         
-        if (parsedExercise) {
+        // Gap recovery mode: mark all exercises as complete by default
+        if (isGapRecovery) {
+          progressArray.fill(true);
+        } else if (parsedExercise) {
           // Handle exercise-level completion (- ex_1 +)
           if (parsedExercise.exerciseLevelDone) {
             // Mark all sets as completed

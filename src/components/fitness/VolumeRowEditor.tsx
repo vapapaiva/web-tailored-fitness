@@ -17,6 +17,7 @@ interface VolumeRowEditorProps {
   getVolumeRowValue: (exerciseId: string, rowIndex: number, field: string, currentValue: number) => string;
   handleVolumeRowInputChange: (exerciseId: string, rowIndex: number, field: string, value: string) => void;
   handleVolumeRowInputBlur: (exerciseId: string, rowIndex: number, field: string, defaultValue: number) => void;
+  isGapRecovery?: boolean;
 }
 
 export function VolumeRowEditor({
@@ -29,7 +30,8 @@ export function VolumeRowEditor({
   onToggleSet,
   getVolumeRowValue,
   handleVolumeRowInputChange,
-  handleVolumeRowInputBlur
+  handleVolumeRowInputBlur,
+  isGapRecovery = false
 }: VolumeRowEditorProps) {
   const completedCount = volumeRow.setIndices.filter(setIndex => completedSets[setIndex]).length;
   const isRowCompleted = completedCount === volumeRow.totalSets;
@@ -206,17 +208,19 @@ export function VolumeRowEditor({
       {/* Spacer to push checkboxes to the right */}
       <div className="flex-grow"></div>
 
-      {/* Checkboxes - aligned to the right */}
-      <div className="flex flex-wrap gap-1 items-end">
-        {volumeRow.setIndices.map(setIndex => (
-          <Checkbox
-            key={setIndex}
-            checked={completedSets[setIndex] || false}
-            onCheckedChange={() => onToggleSet(exerciseId, setIndex)}
-            className="flex-shrink-0"
-          />
-        ))}
-      </div>
+      {/* Checkboxes - aligned to the right (hidden in gap recovery mode) */}
+      {!isGapRecovery && (
+        <div className="flex flex-wrap gap-1 items-end">
+          {volumeRow.setIndices.map(setIndex => (
+            <Checkbox
+              key={setIndex}
+              checked={completedSets[setIndex] || false}
+              onCheckedChange={() => onToggleSet(exerciseId, setIndex)}
+              className="flex-shrink-0"
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

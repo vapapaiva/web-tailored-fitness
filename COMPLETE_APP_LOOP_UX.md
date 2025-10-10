@@ -31,7 +31,31 @@ This document defines the complete user experience for initial fitness plan gene
 - App assigns actual dates to all workouts
 - Plan saved to Firebase with complete date information
 
-**Important:** the amount of days for wich the initial fitness plan is generated depends on when the user generates it. If it's any weekday from Monday to Thursday app generates plan for the rest of the current week (prompts_fitness_plan_generation_rest_of_the_week prompt); if it's Friday through Sunday app generates Microcycle from today till the end of the next week.
+**Important - Smart Date Logic (Applied Consistently Across All Generation):**
+
+The app uses smart date logic for ALL plan generation (initial, gap recovery, next microcycle):
+
+- **Monday to Thursday**: Generate from today to end of current week (Sunday)
+  - Example: Generate on Wed Oct 8 → Plan for Oct 8-12 (Wed-Sun, 5 days)
+  
+- **Friday to Sunday**: Generate from today to end of NEXT week (next Sunday)
+  - Example: Generate on Fri Oct 10 → Plan for Oct 10-19 (Fri-next Sun, 10 days)
+
+**Why this logic:**
+- Prevents generating plans that start in the past
+- Provides adequate planning horizon (at least 5 days)
+- Users on weekends get extended period to plan ahead
+
+**Applied to:**
+- ✅ Initial plan generation
+- ✅ Gap recovery plan generation  
+- ✅ Next microcycle generation (when completing week)
+
+**Week Completion Button:**
+- Button becomes active on the LAST DAY of the current microcycle
+- For standard weeks: Sunday (day 7)
+- For extended periods: Could be any day (depends on when plan was generated)
+- When user completes, next period uses smart logic based on completion day
 
 ### **2. User works out following the plan**
 User opens workout cards and tracks which exercises they've done. User can add/delete/edit exercises in workout as well as add/delete workouts in Fitness plan section of the app (✅ is already covered by current codebase)
@@ -148,20 +172,87 @@ Week 1: Oct 5 - 11 - Introduction and Adaptation
 
 ## 🤖 **AI GENERATION SPECIFICATIONS**
 
-### **Data Collection for Next Week Generation**
+### **Current Prompts (Simple Single-Step Approach)**
 
-**Always Included**:
-- **User Profile**: Complete profile data (goals, fitness level, equipment, etc.)
-- **Current Plan Structure**: Macrocycle, mesocycle, current week number
-- **Date Context**: Next week date range (calculated by app)
+We use **2 prompts** in the current implementation:
 
-**Conditionally Included**:
-- **Workout History**: Last 8 weeks of completed workouts (if any exist)
-- **Current Week Data**: Completion rate, user reflection
-- **Gap Context**: Gap duration, gap activities (if applicable)
+#### **Prompt 1: `prompts_fitness_plan_generation`**
+**Purpose:** Initial plan generation AND gap recovery plan generation
 
-### **AI Prompt Structure**
-We need to define what placeholder-texts should prompts in firebase config contatin so we can use them to populate prompt with data we need
+**When Used:**
+- Initial plan generation (after onboarding)
+- Gap recovery (user returns after 7+ days)
+- Plan regeneration with user comments
+
+**Populated With:**
+- `{USER_PROFILE}` - Complete profile data (goals, fitness level, equipment, etc.)
+- `{CUSTOM_PROMPT}` - User comments OR gap recovery context (see below)
+- `{CURRENT_DATE}` - Current timestamp
+- `{WEEK_DATE_RANGE}` - Target week range `{start: "YYYY-MM-DD", end: "YYYY-MM-DD"}`
+
+**Week Date Range Logic:**
+- **Mon-Thu**: App calculates current week (Monday to Sunday)
+- **Fri-Sun**: App calculates extended period (current Friday to next Sunday)
+- App passes calculated dates to AI, AI generates workouts for that period
+
+**Custom Prompt Variations:**
+
+*For initial generation:*
+```
+{CUSTOM_PROMPT} = "" (empty or user regeneration comments)
+```
+
+*For gap recovery:*
+```
+{CUSTOM_PROMPT} = 
+"=== RETURN TO TRAINING CONTEXT ===
+The user is returning after a {X}-day training gap.
+
+Activities during gap: {user input or 'none'}
+Workouts done during gap: {list of workouts or 'none'}
+Last completed week: Week {N} ({dates})
+
+IMPORTANT: Create a 'return to training' plan that:
+- Starts fresh (Week 1) with appropriate volume reduction
+- Progressively rebuilds to pre-gap levels  
+- Takes into account the gap duration and activities
+- Uses workout history to understand previous training patterns"
+```
+
+**Returns:** Full plan (macrocycle + mesocycles + currentMicrocycle)
+
+#### **Prompt 2: `prompts_fitness_plan_generate_next_microcycle`**
+**Purpose:** Generate next week during normal progression
+
+**When Used:**
+- User completes a week (happy path)
+- Week completion dialog → "Complete Week & Generate Next"
+
+**Populated With:**
+- `{USER_PROFILE}`
+- `{CURRENT_DATE}`
+- `{NEXT_WEEK_DATE_RANGE}` - Calculated next week range
+- `{NEXT_WEEK_NUMBER}` - Incremented week number
+- `{MACROCYCLE}`, `{MESOCYCLE}` - Current plan structure
+- `{PREVIOUS_MICROCYCLE_PLANNED}` - What was planned last week
+- `{PREVIOUS_MICROCYCLE_ACTUAL}` - What user actually did
+- `{WEEKLY_REFLECTION}` - User's reflection notes
+- `{WORKOUT_HISTORY}` - Last 8 weeks of completed workouts
+
+**Returns:** Next microcycle only (within existing macro/meso framework)
+
+---
+
+### **Future Enhancement: Two-Step Generation**
+
+**Note:** The current implementation uses single-step generation (one prompt returns macro + meso + micro). A future enhancement (documented in `enhanced_complete_app_UX_loop.md`) will separate goal setting (macro/meso) from week planning (micro) for better user control and flexibility. This will require additional prompts and UI flows.
+
+**Benefits of future two-step approach:**
+- Change goals mid-journey without restarting
+- Clearer separation of strategic vs tactical planning
+- Better user control over training direction
+
+**Implementation Priority:** Phase 9+ (after MVP complete)
 
 ---
 

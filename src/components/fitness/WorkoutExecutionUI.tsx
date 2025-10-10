@@ -32,6 +32,7 @@ interface WorkoutExecutionUIProps {
   handleInputBlur: (exerciseId: string, setIndex: number, field: string, defaultValue: number) => void;
   handleVolumeRowInputChange: (exerciseId: string, rowIndex: number, field: string, value: string) => void;
   handleVolumeRowInputBlur: (exerciseId: string, rowIndex: number, field: string, defaultValue: number) => void;
+  isGapRecovery?: boolean;
 }
 
 export function WorkoutExecutionUI({
@@ -53,7 +54,8 @@ export function WorkoutExecutionUI({
   handleInputChange,
   handleInputBlur,
   handleVolumeRowInputChange,
-  handleVolumeRowInputBlur
+  handleVolumeRowInputBlur,
+  isGapRecovery = false
 }: WorkoutExecutionUIProps) {
   
   return (
@@ -100,6 +102,7 @@ export function WorkoutExecutionUI({
               handleInputBlur={handleInputBlur}
               handleVolumeRowInputChange={handleVolumeRowInputChange}
               handleVolumeRowInputBlur={handleVolumeRowInputBlur}
+              isGapRecovery={isGapRecovery}
             />
           );
         })}

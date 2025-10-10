@@ -13,10 +13,10 @@ import {
 import { getValue, fetchAndActivate } from 'firebase/remote-config';
 import { db, remoteConfig } from '@/lib/firebase';
 import { useAuthStore } from './authStore';
-import type { FitnessPlan, FitnessPlanResponse, GenerationRequest, CompletedWorkout } from '@/types/fitness';
+import type { FitnessPlan, FitnessPlanResponse, GenerationRequest, CompletedWorkout, GapContext } from '@/types/fitness';
 import { createMutationTracker, addPendingMutation, removePendingMutation, isOwnMutation, type MutationState } from '@/lib/mutationTracker';
 import { sanitizeWorkoutForFirebase } from '@/lib/firebaseUtils';
-import { calculateInitialWeekRange, calculateDateFromDayOfWeek, calculateNextWeekRange } from '@/lib/dateUtils';
+import { calculateInitialWeekRange, calculateDateFromDayOfWeek, calculateNextWeekRange, getWeekStartDate, getWeekEndDate } from '@/lib/dateUtils';
 import { migratePlanWithDates } from '@/lib/dateMigration';
 import { saveWorkoutHistory, extractCompletedWorkouts, getWorkoutHistory } from '@/lib/workoutHistoryService';
 
@@ -42,6 +42,7 @@ interface FitnessPlanState {
   updateWorkoutStatus: (workoutId: string, status: 'planned' | 'completed', additionalData?: { actualDuration?: number; notes?: string }) => Promise<void>;
   completeMicrocycle: (completedWorkouts: CompletedWorkout[], weeklyNotes: string) => Promise<void>;
   generateNextMicrocycle: (completedWorkouts: CompletedWorkout[], weeklyNotes: string) => Promise<void>;
+  generateGapRecoveryPlan: (gapContext: GapContext) => Promise<void>;
   clearError: () => void;
 }
 
@@ -97,10 +98,10 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           : 'prompts_fitness_plan_generation_rest_of_the_week';
         
         console.log(`[Generation] Day of week: ${dayOfWeek}, Using prompt: ${promptKey}`);
-        
+
         // Get fitness plan generation prompt from Firebase Remote Config
-        const promptValue = getValue(remoteConfig, promptKey);
-        const promptString = promptValue.asString();
+        let promptValue = getValue(remoteConfig, promptKey);
+        let promptString = promptValue.asString();
         
         console.log('Remote Config Prompt source:', promptValue.getSource());
         console.log('Prompt available:', !!promptString);
@@ -108,10 +109,10 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         if (!promptString) {
           // Fallback to default prompt if extended prompt not configured
           console.warn(`Prompt ${promptKey} not found, falling back to default`);
-          const fallbackValue = getValue(remoteConfig, 'prompts_fitness_plan_generation');
-          const fallbackString = fallbackValue.asString();
-          if (!fallbackString) {
-            throw new Error('Fitness plan generation prompts not configured in Firebase Remote Config. Please set the "prompts_fitness_plan_generation" parameter.');
+          promptValue = getValue(remoteConfig, 'prompts_fitness_plan_generation');
+          promptString = promptValue.asString();
+        if (!promptString) {
+          throw new Error('Fitness plan generation prompts not configured in Firebase Remote Config. Please set the "prompts_fitness_plan_generation" parameter.');
           }
         }
 
@@ -134,7 +135,8 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           .replace('{USER_PROFILE}', JSON.stringify(generationRequest.userProfile, null, 2))
           .replace('{CUSTOM_PROMPT}', generationRequest.customPrompt)
           .replace('{CURRENT_DATE}', generationRequest.currentDate)
-          .replace('{WEEK_DATE_RANGE}', JSON.stringify(weekDateRange, null, 2));
+          .replace('{WEEK_DATE_RANGE}', JSON.stringify(weekDateRange, null, 2))
+          .replace('{WORKOUT_HISTORY}', JSON.stringify([], null, 2)); // Empty for initial generation
 
         // Call OpenAI API
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -208,7 +210,7 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         const planWithDates = {
           ...planResponse.plan,
           currentMicrocycle: microcycleWithDates,
-          status: 'draft' as const, // Set as draft, not approved yet
+          status: 'approved' as const, // Auto-approve (user can regenerate if needed)
         };
 
         // Update regeneration count if there's an existing plan
@@ -731,9 +733,14 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         const workoutHistory = await getWorkoutHistory(user.uid, { limit: 8 });
         console.log('[Next Week Generation] Retrieved', workoutHistory.length, 'weeks of history');
 
-        // 3. Calculate next week date range
-        const nextWeekDateRange = calculateNextWeekRange(currentPlan.currentMicrocycle.dateRange);
-        console.log('[Next Week Generation] Next week:', nextWeekDateRange);
+        // 3. Calculate next week date range (use smart logic based on today)
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        console.log('[Next Week Generation] Today is:', today.toISOString().split('T')[0], '(day of week:', dayOfWeek, ')');
+        
+        // Use same smart logic as initial generation
+        const nextWeekDateRange = calculateInitialWeekRange(today);
+        console.log('[Next Week Generation] Next period:', nextWeekDateRange, '(Mon-Thu: current week, Fri-Sun: extended)');
 
         // 4. Get Firebase Remote Config prompt
         await fetchAndActivate(remoteConfig);
@@ -754,7 +761,7 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
 
         // 5. Prepare context for AI
         const previousMicrocyclePlanned = {
-          week: currentPlan.currentMicrocycle.week,
+            week: currentPlan.currentMicrocycle.week,
           focus: currentPlan.currentMicrocycle.focus,
           dateRange: currentPlan.currentMicrocycle.dateRange,
           workouts: currentPlan.currentMicrocycle.workouts.map(w => ({
@@ -852,8 +859,8 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           ...fitnessPlanResponse.plan.currentMicrocycle,
           week: currentPlan.currentMicrocycle.week + 1,
           dateRange: nextWeekDateRange,
-          status: 'active' as const,
-          completedWorkouts: [],
+            status: 'active' as const,
+            completedWorkouts: [],
           workouts: fitnessPlanResponse.plan.currentMicrocycle.workouts.map(workout => {
             const date = calculateDateFromDayOfWeek(workout.dayOfWeek, nextWeekDateRange.start);
             console.log(`[Next Week Generation] Assigning date ${date} to workout "${workout.name}"`);
@@ -869,7 +876,7 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
         const updatedPlan = {
           ...currentPlan,
           currentMicrocycle: microcycleWithDates,
-          status: 'draft' as const, // New week needs approval
+          status: 'approved' as const, // Auto-approve (user can regenerate if needed)
         };
 
         set({ currentPlan: updatedPlan, generating: false });
@@ -889,6 +896,223 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           generating: false,
           error: error instanceof Error ? error.message : 'Failed to generate next week'
         });
+      }
+    },
+
+    generateGapRecoveryPlan: async (gapContext: GapContext) => {
+      const authStore = useAuthStore.getState();
+      const { user } = authStore;
+      
+      if (!user) {
+        console.error('[Gap Recovery] No authenticated user');
+        return;
+      }
+
+      try {
+        set({ generating: true, error: null });
+        console.log('[Gap Recovery] Starting gap recovery plan generation');
+        console.log('[Gap Recovery] Gap duration:', gapContext.gapDurationDays, 'days');
+
+        // 1. Get user profile
+        const profileDoc = await getDoc(doc(db, 'users', user.uid, 'profile', 'data'));
+        const userProfile = profileDoc.exists() ? profileDoc.data() : {};
+
+        // 2. Get workout history (last 20 weeks, then filter client-side for 6 months)
+        const allHistory = await getWorkoutHistory(user.uid, { limit: 20 });
+        
+        // Filter client-side for last 6 months to avoid complex Firebase index
+        const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+        const workoutHistory = allHistory.filter(week => {
+          const weekEndDate = new Date(week.dateRange.end);
+          return weekEndDate >= sixMonthsAgo;
+        });
+        
+        console.log('[Gap Recovery] Retrieved', workoutHistory.length, 'weeks of history (filtered from', allHistory.length, 'total)');
+
+        // 3. Calculate week date range (use same smart logic as initial generation)
+        const today = new Date();
+        const dayOfWeek = today.getDay();
+        console.log('[Gap Recovery] Today is:', today.toISOString().split('T')[0], '(day of week:', dayOfWeek, ')');
+        
+        // Use smart logic: Mon-Thu = current week, Fri-Sun = extended period
+        const weekDateRange = calculateInitialWeekRange(today);
+        
+        console.log('[Gap Recovery] Week range:', weekDateRange, '(Mon-Thu: current week, Fri-Sun: extended period)');
+        console.log('[Gap Recovery] Period length:', Math.ceil((new Date(weekDateRange.end).getTime() - new Date(weekDateRange.start).getTime()) / (1000 * 60 * 60 * 24)) + 1, 'days');
+
+        // 4. Get Firebase Remote Config (use same prompt as initial generation)
+        await fetchAndActivate(remoteConfig);
+        const openaiApiKey = getValue(remoteConfig, 'openai_api_key').asString();
+        
+        const promptKey = 'prompts_fitness_plan_generation';
+        console.log('[Gap Recovery] Using prompt:', promptKey);
+        
+        const promptValue = getValue(remoteConfig, promptKey);
+        const promptString = promptValue.asString();
+
+        if (!openaiApiKey) {
+          throw new Error('OpenAI API key not configured in Firebase Remote Config');
+        }
+
+        if (!promptString) {
+          throw new Error(`${promptKey} not configured in Firebase Remote Config`);
+        }
+
+        const promptConfig = JSON.parse(promptString);
+
+        // 5. Build comprehensive custom prompt with gap context
+        let customPrompt = `\n\n=== RETURN TO TRAINING CONTEXT ===\n`;
+        customPrompt += `The user is returning after a ${gapContext.gapDurationDays}-day training gap.\n`;
+        
+        if (gapContext.gapActivities) {
+          customPrompt += `\nActivities during gap: ${gapContext.gapActivities}\n`;
+        }
+        
+        if (gapContext.gapWorkouts && gapContext.gapWorkouts.length > 0) {
+          customPrompt += `\nWorkouts done during gap:\n`;
+          gapContext.gapWorkouts.forEach(workout => {
+            customPrompt += `- ${workout.name} (${workout.completedAt})\n`;
+          });
+        }
+        
+        if (gapContext.lastCompletedMicrocycle) {
+          const lastWeek = gapContext.lastCompletedMicrocycle;
+          customPrompt += `\nLast completed week: Week ${lastWeek.week} (${lastWeek.dateRange.start} to ${lastWeek.dateRange.end})\n`;
+          customPrompt += `Workouts completed: ${lastWeek.completedWorkouts.length}\n`;
+        }
+
+        customPrompt += `\nIMPORTANT: Create a "return to training" plan that:\n`;
+        customPrompt += `- Starts fresh (Week 1) with appropriate volume reduction\n`;
+        customPrompt += `- Progressively rebuilds to pre-gap levels\n`;
+        customPrompt += `- Takes into account the gap duration and activities\n`;
+        customPrompt += `- Uses workout history to understand previous training patterns\n`;
+
+        // 6. Populate prompt template
+        const userPrompt = promptConfig.user_prompt_template
+          .replace('{USER_PROFILE}', JSON.stringify(userProfile, null, 2))
+          .replace('{CUSTOM_PROMPT}', customPrompt)
+          .replace('{CURRENT_DATE}', today.toISOString())
+          .replace('{WEEK_DATE_RANGE}', JSON.stringify(weekDateRange, null, 2))
+          .replace('{WORKOUT_HISTORY}', JSON.stringify(workoutHistory, null, 2));
+
+        console.log('[Gap Recovery] Calling OpenAI API...');
+
+        // 7. Call OpenAI API
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openaiApiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: [
+              {
+                role: 'system',
+                content: promptConfig.system_prompt,
+              },
+              {
+                role: 'user',
+                content: userPrompt,
+              },
+            ],
+            temperature: 0.7,
+            max_tokens: 4000,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`OpenAI API error: ${response.statusText} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        const content = data.choices[0]?.message?.content;
+
+        if (!content) {
+          throw new Error('No content received from OpenAI API');
+        }
+
+        console.log('[Gap Recovery] Received response from OpenAI');
+
+        // 8. Clean and parse the JSON response (remove markdown formatting if present)
+        let cleanContent = content.trim();
+        
+        if (cleanContent.startsWith('```json')) {
+          cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanContent.startsWith('```')) {
+          cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        
+        const fitnessPlanResponse: FitnessPlanResponse = JSON.parse(cleanContent);
+        
+        if (!fitnessPlanResponse.plan || !fitnessPlanResponse.plan.currentMicrocycle) {
+          throw new Error('Invalid response format from AI');
+        }
+
+        // 9. Assign dates to workouts
+        const microcycleWithDates = {
+          ...fitnessPlanResponse.plan.currentMicrocycle,
+          dateRange: weekDateRange,
+          status: 'active' as const,
+          completedWorkouts: [],
+          workouts: fitnessPlanResponse.plan.currentMicrocycle.workouts.map(workout => {
+            const date = calculateDateFromDayOfWeek(workout.dayOfWeek, weekDateRange.start);
+            console.log(`[Gap Recovery] Assigning date ${date} to workout "${workout.name}"`);
+            return {
+              ...workout,
+              date,
+              status: 'planned' as const
+            };
+          })
+        };
+
+        // 10. Create fresh plan (auto-approved)
+        const freshPlan: FitnessPlan = {
+          ...fitnessPlanResponse.plan,
+          currentMicrocycle: microcycleWithDates,
+          status: 'approved', // Auto-approve for gap recovery
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        set({ currentPlan: freshPlan, generating: false });
+
+        // 11. Persist to Firebase
+        const planDocRef = doc(db, 'users', user.uid, 'currentPlan', 'plan');
+        await setDoc(planDocRef, sanitizeWorkoutForFirebase({
+          ...freshPlan,
+          updatedAt: serverTimestamp(),
+        }));
+
+        // 12. Optionally save gap record to Firebase
+        if (gapContext.lastCompletedMicrocycle) {
+          const gapId = `gap_${gapContext.lastCompletedMicrocycle.dateRange.end}_${Date.now()}`;
+          const gapDocRef = doc(db, 'users', user.uid, 'trainingGaps', gapId);
+          
+          await setDoc(gapDocRef, sanitizeWorkoutForFirebase({
+            startDate: gapContext.lastCompletedMicrocycle.dateRange.end,
+            endDate: today.toISOString(),
+            durationDays: gapContext.gapDurationDays,
+            activities: gapContext.gapActivities || null,
+            workouts: gapContext.gapWorkouts || [],
+            resumedAt: serverTimestamp(),
+          }));
+
+          console.log('[Gap Recovery] Gap record saved:', gapId);
+        }
+
+        console.log('[Gap Recovery] Successfully generated fresh return-to-training plan');
+        console.log('[Gap Recovery] New plan week range:', weekDateRange);
+        console.log('[Gap Recovery] New plan status:', freshPlan.status);
+
+      } catch (error) {
+        console.error('[Gap Recovery] Failed:', error);
+        set({ 
+          generating: false,
+          error: error instanceof Error ? error.message : 'Failed to generate recovery plan'
+        });
+        throw error; // Re-throw so the page can catch it
       }
     },
   }))

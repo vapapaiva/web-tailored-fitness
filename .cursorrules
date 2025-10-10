@@ -142,6 +142,9 @@ When adding dependencies:
 2. Update the Technology Stack section
 3. Note any configuration changes needed
 
+### Current Dependencies
+- **date-fns**: Date formatting utilities (used for "X days ago" formatting in gap recovery dialog)
+
 ## 🚀 Development Commands
 ```bash
 npm run dev          # Start development server
@@ -309,6 +312,50 @@ npm run lint         # Run ESLint
   - Conflict resolution for concurrent edits
 - **Benefits**: Multi-device sync, smooth UX, no data loss, professional collaboration
 - **Usage**: **MANDATORY** for all features that update data or require multi-device support
+
+### 15. Gap Recovery Flow (2025-10-09)
+- **Files**: 
+  - `src/pages/GapRecoveryPage.tsx` - Full-page gap recovery experience
+  - `src/hooks/useGapDetection.ts` - Automatic gap detection & navigation
+  - `src/stores/fitnessPlanStore.ts` - `generateGapRecoveryPlan()` function
+  - Updated `src/App.tsx` - Added `/app/gap-recovery` route
+  - Updated `src/pages/FitnessPlanPage.tsx` - Integrated automatic gap detection
+- **Description**: Complete return-to-training flow for users who pause for 7+ days
+- **Features**:
+  - **Automatic Detection & Navigation**: Detects 7+ day training gaps and redirects to full-page gap recovery experience
+  - **Full-Page Experience**: Dedicated page (not popup) for comprehensive gap recovery process
+  - **Gap Context Collection**: Optional text area for describing what happened during gap
+  - **Workout Management**: 
+    - Shows completed workouts from last active week
+    - Add new workouts with name and date
+    - Delete workouts from the list
+    - All workouts sent to AI for context
+  - **Complete Profile Editing**: Full inline profile editor (reused from ProfilePage)
+    - Shows all profile fields organized by sections
+    - Real-time editing with validation
+    - Must save profile changes before generating plan
+  - **Fresh Plan Generation**: Creates new Week 1 plan tailored for return to training
+  - **Auto-Approval**: Gap recovery plans are auto-approved (no draft state)
+  - **Gap Record Persistence**: Saves gap data to Firebase (`trainingGaps` collection)
+  - **Smart Prompt Selection**: Uses Mon-Thu vs Fri-Sun logic for current week generation
+  - **History Context**: Includes up to 6 months of workout history in AI prompt
+- **UX Flow**: 
+  1. User returns after 7+ days → Automatically redirected to `/app/gap-recovery`
+  2. User sees welcome message with last active info and gap duration
+  3. User optionally describes gap activities
+  4. User can add/edit/delete workouts done during gap
+  5. User reviews and edits complete profile (must save changes)
+  6. User clicks "Generate Fresh Plan 🚀"
+  7. AI generates return-to-training plan with appropriate volume
+  8. New Week 1 starts immediately (auto-approved)
+  9. User redirected back to fitness plan page
+- **Component Reuse**: 
+  - Profile editing components reused from ProfilePage (FormField, CollapsibleChoiceField)
+  - Maintains consistency across the app
+- **Firebase Structure**: `users/{userId}/trainingGaps/{gapId}` with startDate, endDate, durationDays, activities, workouts
+- **Dependencies**: date-fns (for "X days ago" formatting)
+- **Integration**: Seamlessly integrated with existing plan generation, profile editing, and routing
+- **Testing**: Use Testing Page "👋 Long Gap State" button to simulate gaps
 
 ---
 
