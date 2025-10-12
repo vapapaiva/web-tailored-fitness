@@ -12,9 +12,24 @@ const BASE_36 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
  * @returns New rank between prev and next
  */
 export function generateRank(prevRank: string = '', nextRank: string = ''): string {
-  // If no previous rank, start with middle of alphabet
-  if (!prevRank) {
-    return nextRank ? generateRank('', nextRank) : 'M';
+  // If no previous rank, generate rank before nextRank
+  if (!prevRank && nextRank) {
+    // Generate a rank that comes before nextRank
+    const firstChar = nextRank[0];
+    const firstIndex = BASE_36.indexOf(firstChar);
+    if (firstIndex > 0) {
+      // Can fit before it
+      const midIndex = Math.floor(firstIndex / 2);
+      return BASE_36[midIndex];
+    } else {
+      // First char is '0', need to make it longer
+      return '0' + BASE_36[Math.floor(BASE_36.length / 2)];
+    }
+  }
+  
+  // If no ranks at all, start with middle
+  if (!prevRank && !nextRank) {
+    return 'M';
   }
   
   // If no next rank, append to previous

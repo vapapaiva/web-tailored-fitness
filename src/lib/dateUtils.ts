@@ -231,3 +231,35 @@ export function formatFullDate(dateStr: string): string {
     day: 'numeric' 
   });
 }
+
+/**
+ * Check if a date is in the current week (Monday-Sunday)
+ * @param dateStr - ISO date string or Date object
+ * @returns true if the date is in the current week
+ */
+export function isDateInCurrentWeek(dateStr: string | Date): boolean {
+  const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+  const today = new Date();
+  
+  const currentWeekStart = getWeekStartDate(today);
+  const currentWeekEnd = getWeekEndDate(today);
+  
+  const dateISO = date.toISOString().split('T')[0];
+  
+  return dateISO >= currentWeekStart && dateISO <= currentWeekEnd;
+}
+
+/**
+ * Check if a date is in the past (before today)
+ * @param dateStr - ISO date string
+ * @returns true if the date is before today
+ */
+export function isDateInPast(dateStr: string): boolean {
+  const date = new Date(dateStr);
+  const today = new Date();
+  
+  date.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  
+  return date < today;
+}

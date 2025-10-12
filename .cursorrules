@@ -144,6 +144,7 @@ When adding dependencies:
 
 ### Current Dependencies
 - **date-fns**: Date formatting utilities (used for "X days ago" formatting in gap recovery dialog)
+- **recharts**: Data visualization library (used for workout stats charts and graphs)
 
 ## 🚀 Development Commands
 ```bash
@@ -371,6 +372,59 @@ npm run lint         # Run ESLint
 - **Dependencies**: date-fns (for "X days ago" formatting)
 - **Integration**: Seamlessly integrated with existing plan generation, profile editing, and routing
 - **Testing**: Use Testing Page "👋 Long Gap State" button to simulate gaps
+
+### 17. Standalone Workout Tracking System (2025-10-12) - **PHASE A COMPLETE**
+- **Files**:
+  - `src/types/workout.ts` - Workout document types independent from AI plan
+  - `src/stores/workoutsStore.ts` - Complete workout management store with real-time sync
+  - `src/pages/WorkoutsPage.tsx` - Main workout tracking page
+  - `src/components/workouts/PlannedSection.tsx` - Planned workouts container
+  - `src/components/workouts/PastWorkouts.tsx` - Past workouts subsection
+  - `src/components/workouts/CurrentWeekWorkouts.tsx` - Current week with drag & drop
+  - `src/components/workouts/LaterWorkouts.tsx` - Future workouts subsection
+  - `src/components/workouts/WithoutDateWorkouts.tsx` - Workout library
+  - `src/components/workouts/DoneSection.tsx` - Completed workouts section
+  - `src/components/workouts/WorkoutStatsDisplay.tsx` - Stats with charts/graphs
+  - `src/components/workouts/CompletedWorkoutsList.tsx` - Completed workouts list
+  - `src/components/workouts/AddWorkoutDialog.tsx` - Add workout form
+  - `src/components/workouts/WorkoutCardV2.tsx` - Enhanced workout card
+  - `src/components/workouts/WorkoutExecutionDialog.tsx` - Workout editing wrapper
+  - `src/lib/workoutCompletionLogic.ts` - Completion logic utilities
+  - Updated `src/lib/dateUtils.ts` - Added week/date checking functions
+  - Updated `src/lib/lexoRank.ts` - Fixed stack overflow bug
+  - Updated `src/App.tsx` - Added `/app/workouts` route
+  - Updated `src/components/layout/AppLayout.tsx` - Added Workouts nav item
+- **Description**: Complete standalone workout tracking system decoupled from AI fitness planning
+- **Features**:
+  - **Independent Workout Management**: Works completely separately from AI Coach
+  - **Smart Organization**: 4 planned subsections (Past, Current Week, Later, Without Date) + Done section
+  - **Automatic Categorization**: Workouts auto-sort into sections based on date
+  - **Current Week View**: Shows both planned and completed workouts until week passes
+  - **Full Drag & Drop**: Reorder workouts within Current Week with dnd-kit
+  - **Workout Execution**: Add/edit/delete exercises with UI and text editors
+  - **Date Management**: Edit workout dates, clear dates, auto-recalculate sections
+  - **Auto-Completion**: Automatically marks workout as complete when all exercises done
+  - **Completion Tracking**: Mark workouts/exercises/sets as complete individually
+  - **Source Tracking**: Badges show Manual vs AI Coach origin
+  - **Progress Stats**: Comprehensive statistics with charts and graphs:
+    - Overview cards (workouts, exercises, sets, time)
+    - Weekly workout trend (line chart)
+    - Exercise type distribution (pie chart)
+    - Muscle group breakdown (bar chart)
+    - Weekly completion rate (bar chart)
+  - **Real-Time Sync**: Multi-device support with mutation tracking
+  - **Smart Filtering**: Completed workouts excluded from planned sections
+  - **Collapsible Sections**: Better organization with expandable subsections
+- **Firebase Collection**: `users/{userId}/workouts/{workoutId}`
+- **Data Structure**: Flat, independent `WorkoutDocument` type (not nested in plans)
+- **Dependencies**: 
+  - dnd-kit (drag & drop)
+  - recharts (charts and graphs)
+  - Existing real-time sync patterns
+- **Architecture**: Follows real-time sync pattern from fitnessPlanStore
+- **Future Integration**: Will connect with AI Coach in Phase B/C
+- **Spec Reference**: `enhanced_complete_app_UX_loop.md`
+- **Implementation Plan**: `ENHANCED_UX_IMPLEMENTATION_PLAN.md`
 
 ---
 

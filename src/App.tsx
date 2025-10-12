@@ -10,6 +10,7 @@ import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import { AppLayout } from '@/components/layout/AppLayout';
 
 // Pages
+import { WorkoutsPage } from '@/pages/WorkoutsPage';
 import { FitnessPlanPage } from '@/pages/FitnessPlanPage';
 import { ProgressPage } from '@/pages/ProgressPage';
 import { ProfilePage } from '@/pages/ProfilePage';
@@ -98,6 +99,7 @@ function App() {
           }
         >
           <Route index element={<FitnessPlanPage />} />
+          <Route path="workouts" element={<WorkoutsPage />} />
           <Route path="progress" element={<ProgressPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="testing" element={<TestingPage />} />

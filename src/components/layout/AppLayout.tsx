@@ -34,6 +34,7 @@ export function AppLayout() {
 
   const navItems = [
     { id: 'plan', label: 'Fitness Plan', icon: Calendar, path: '/app' },
+    { id: 'workouts', label: 'Workouts', icon: Activity, path: '/app/workouts' },
     { id: 'progress', label: 'Progress', icon: TrendingUp, path: '/app/progress' },
     { id: 'testing', label: 'Testing', icon: TestTube, path: '/app/testing' },
   ];
