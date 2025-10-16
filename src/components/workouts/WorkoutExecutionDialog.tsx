@@ -7,13 +7,16 @@ import { useState, useEffect } from 'react';
 import type { WorkoutDocument } from '@/types/workout';
 import type { Workout } from '@/types/fitness';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
+import { useAICoachStore } from '@/stores/aiCoachStore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle, RotateCcw, Trash2, X, Calendar } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { CheckCircle, RotateCcw, Trash2, X, Calendar, Info, Sparkles, AlertCircle, AlertTriangle } from 'lucide-react';
 import { WorkoutExecutionUI } from '@/components/fitness/WorkoutExecutionUI';
 import { WorkoutExecutionText } from '@/components/fitness/WorkoutExecutionText';
 import { useWorkoutExecution } from '@/hooks/useWorkoutExecution';
@@ -39,17 +42,32 @@ export function WorkoutExecutionDialog({
   onComplete 
 }: WorkoutExecutionDialogProps) {
   const { updateWorkout, deleteWorkout, markAsComplete, markAsIncomplete, workouts } = useWorkoutsStore();
+  const { currentPlan: aiPlan, loadPlan: loadAIPlan } = useAICoachStore();
   
   // UI state
   const [activeTab, setActiveTab] = useState<'ui' | 'text'>('ui');
   const [viewMode, setViewMode] = useState<'expanded' | 'collapsed'>('collapsed');
   const [dateString, setDateString] = useState(workout.date || '');
+  const [dateError, setDateError] = useState<string>('');
+  const [showRevertConfirm, setShowRevertConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
+  // Always get the latest workout from store for reactive UI
+  const latestWorkoutFromStore = workouts.find(w => w.id === workout.id) || workout;
   
   // Local workout state
   const [localWorkout, setLocalWorkout] = useState<Workout>(() => ({
     ...workout,
     dayOfWeek: workout.dayOfWeek || 0,
   }));
+
+  // Load AI plan if this is an AI Coach workout (for validation)
+  useEffect(() => {
+    if (latestWorkoutFromStore.source === 'ai-coach' && !aiPlan) {
+      console.log('[WorkoutExecution] Loading AI plan for validation');
+      loadAIPlan();
+    }
+  }, [latestWorkoutFromStore.source, aiPlan, loadAIPlan]);
 
   // Sync with store updates
   useEffect(() => {
@@ -145,6 +163,36 @@ export function WorkoutExecutionDialog({
     // Auto-complete workout if all exercises are done
     const shouldAutoComplete = allExercisesComplete && workout.status !== 'completed';
     
+    // Check if workout has manual changes (for AI Coach workouts)
+    let hasManualChanges = latestWorkoutFromStore.hasManualChanges || false;
+    if (latestWorkoutFromStore.source === 'ai-coach' && latestWorkoutFromStore.originalAISuggestion) {
+      // Compare current exercises with original AI suggestion
+      // Note: We ignore completion status and volumeRowIds in comparison
+      const currentExercisesNormalized = JSON.stringify(
+        updatedWorkout.exercises.map(ex => ({
+          ...ex,
+          sets: ex.sets.map(set => ({
+            ...set,
+            completed: undefined,
+            volumeRowId: undefined
+          }))
+        }))
+      );
+      
+      const originalExercisesNormalized = JSON.stringify(
+        latestWorkoutFromStore.originalAISuggestion.exercises.map(ex => ({
+          ...ex,
+          sets: ex.sets.map(set => ({
+            ...set,
+            completed: undefined,
+            volumeRowId: undefined
+          }))
+        }))
+      );
+      
+      hasManualChanges = currentExercisesNormalized !== originalExercisesNormalized;
+    }
+    
     // Update in store (async, silent)
     updateWorkout(workout.id, {
       name: updatedWorkout.name,
@@ -156,6 +204,7 @@ export function WorkoutExecutionDialog({
       actualDuration: updatedWorkout.actualDuration,
       notes: updatedWorkout.notes,
       checkIns: updatedWorkout.checkIns,
+      hasManualChanges, // Track if user modified AI workout
       // Auto-complete if all exercises are done
       ...(shouldAutoComplete && {
         status: 'completed' as const,
@@ -167,6 +216,50 @@ export function WorkoutExecutionDialog({
   };
 
   const handleDateChange = (newDate: string) => {
+    // Clear previous errors
+    setDateError('');
+    
+    console.log('[DateChange] Validating date change:', {
+      newDate,
+      source: latestWorkoutFromStore.source,
+      hasContext: !!latestWorkoutFromStore.aiCoachContext,
+      hasPlan: !!aiPlan?.currentMicrocycle,
+      microcycleId: latestWorkoutFromStore.aiCoachContext?.microcycleId,
+      planMicrocycleId: aiPlan?.currentMicrocycle?.id
+    });
+    
+    // Validate date is within microcycle range for AI Coach workouts
+    if (latestWorkoutFromStore.source === 'ai-coach' && latestWorkoutFromStore.aiCoachContext) {
+      // For AI Coach workouts, ALWAYS validate against microcycle range
+      if (aiPlan?.currentMicrocycle) {
+        // Workout belongs to current microcycle - validate strictly
+        if (latestWorkoutFromStore.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
+          const { start, end } = aiPlan.currentMicrocycle.dateRange;
+          
+          console.log('[DateChange] Validating against microcycle range:', { start, end, newDate });
+          
+          if (newDate && (newDate < start || newDate > end)) {
+            console.log('[DateChange] VALIDATION FAILED - Date outside range');
+            // Show inline error instead of alert
+            setDateError(`Date must be within microcycle range: ${start} to ${end}`);
+            // Reset to current value - DON'T allow the change
+            setDateString(latestWorkoutFromStore.date || '');
+            return; // EXIT - don't update
+          }
+        } else {
+          // Workout from old microcycle - more lenient but still warn
+          console.log('[DateChange] Workout from old microcycle, allowing change');
+        }
+      } else {
+        // No current microcycle loaded, but it's an AI workout - be cautious
+        console.warn('[DateChange] AI workout but no microcycle loaded - preventing change as safety measure');
+        setDateError('Cannot change date: AI Coach plan not loaded');
+        setDateString(latestWorkoutFromStore.date || '');
+        return;
+      }
+    }
+    
+    console.log('[DateChange] Validation passed, updating date');
     setDateString(newDate);
     
     // Compute dayOfWeek
@@ -186,14 +279,21 @@ export function WorkoutExecutionDialog({
   };
 
   const handleClearDate = () => {
+    // Prevent clearing date for AI Coach workouts
+    if (latestWorkoutFromStore.source === 'ai-coach' && latestWorkoutFromStore.aiCoachContext) {
+      setDateError('AI Coach workouts must have a date to stay aligned with your training plan');
+      return;
+    }
     handleDateChange('');
   };
 
   const handleDeleteWorkout = () => {
-    if (confirm('Are you sure you want to delete this workout? This action cannot be undone.')) {
-      deleteWorkout(workout.id);
-      onClose();
-    }
+    setShowDeleteConfirm(true);
+  };
+  
+  const confirmDelete = () => {
+    deleteWorkout(workout.id);
+    onClose();
   };
 
   const handleCompleteWorkout = async () => {
@@ -203,6 +303,47 @@ export function WorkoutExecutionDialog({
 
   const handleResetWorkout = async () => {
     await markAsIncomplete(workout.id);
+  };
+  
+  const handleRevertToOriginal = () => {
+    if (!latestWorkoutFromStore.originalAISuggestion) return;
+    setShowRevertConfirm(true);
+  };
+  
+  const confirmRevert = () => {
+    if (!latestWorkoutFromStore.originalAISuggestion) return;
+    
+    const revertedWorkout = {
+      ...executionState.workout,
+      exercises: JSON.parse(JSON.stringify(latestWorkoutFromStore.originalAISuggestion.exercises)) // Deep copy
+    };
+    updateWorkoutStructure(revertedWorkout);
+    
+    // Reset hasManualChanges flag
+    updateWorkout(workout.id, {
+      hasManualChanges: false
+    }).catch(error => {
+      console.error('Failed to reset hasManualChanges flag:', error);
+    });
+    
+    setShowRevertConfirm(false);
+  };
+  
+  // Format workout as text for preview
+  const formatWorkoutAsText = (exercises: Exercise[]) => {
+    return exercises.map((ex, i) => {
+      const sets = ex.sets.map((set, j) => {
+        if (set.duration) {
+          return `  Set ${j + 1}: ${Math.floor(set.duration / 60)}min`;
+        } else if (set.distance) {
+          return `  Set ${j + 1}: ${set.distance}km`;
+        } else {
+          return `  Set ${j + 1}: ${set.reps || 0} reps${set.weight ? ` @ ${set.weight}kg` : ''}`;
+        }
+      }).join('\n');
+      
+      return `${i + 1}. ${ex.name}\n${sets}`;
+    }).join('\n\n');
   };
 
   // Exercise management
@@ -337,6 +478,7 @@ export function WorkoutExecutionDialog({
   const isCompleted = workout.status === 'completed';
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -363,46 +505,107 @@ export function WorkoutExecutionDialog({
               </div>
               
               {/* Date Field */}
-              <div className="flex items-center space-x-2">
-                <Label className="text-sm text-muted-foreground whitespace-nowrap flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  Date:
-                </Label>
-                <Input
-                  type="date"
-                  value={dateString}
-                  onChange={(e) => handleDateChange(e.target.value)}
-                  className="text-sm flex-1 max-w-[200px]"
-                />
-                {dateString && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleClearDate}
-                    className="flex-shrink-0 h-8 w-8 p-0"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Label className="text-sm text-muted-foreground whitespace-nowrap flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    Date:
+                  </Label>
+                  <Input
+                    type="date"
+                    value={dateString}
+                    onChange={(e) => handleDateChange(e.target.value)}
+                    className={`text-sm flex-1 max-w-[200px] ${dateError ? 'border-red-500' : ''}`}
+                  />
+                  {dateString && !latestWorkoutFromStore.aiCoachContext && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearDate}
+                      className="flex-shrink-0 h-8 w-8 p-0"
+                      title="Clear date"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                
+                {/* Proactive info for AI Coach workouts */}
+                {latestWorkoutFromStore.source === 'ai-coach' && aiPlan?.currentMicrocycle && (
+                  <p className="text-xs text-purple-600 dark:text-purple-400 flex items-center gap-1">
+                    <Info className="h-3 w-3" />
+                    AI Coach workout • Must stay within {aiPlan.currentMicrocycle.dateRange.start} to {aiPlan.currentMicrocycle.dateRange.end}
+                  </p>
+                )}
+                
+                {/* Error message */}
+                {dateError && (
+                  <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {dateError}
+                  </p>
                 )}
               </div>
             </div>
             
-            {/* Delete Button Only */}
-            <div className="flex items-center space-x-2">
+            {/* Delete Button with Info */}
+            <div className="flex flex-col items-end gap-1">
               <Button 
                 variant="destructive" 
                 size="sm" 
                 onClick={handleDeleteWorkout}
-                title="Delete workout"
+                disabled={latestWorkoutFromStore.source === 'ai-coach'}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
+              {latestWorkoutFromStore.source === 'ai-coach' && (
+                <p className="text-xs text-muted-foreground">
+                  AI workouts can't be deleted
+                </p>
+              )}
             </div>
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* AI Coach Original Suggestion Banner */}
+          {latestWorkoutFromStore.originalAISuggestion && latestWorkoutFromStore.hasManualChanges && (
+            <Alert className="bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800">
+              <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <AlertDescription>
+                <div className="space-y-3">
+                  <p className="font-medium text-purple-900 dark:text-purple-200">
+                    You've modified this AI Coach workout
+                  </p>
+                  <p className="text-sm text-purple-800 dark:text-purple-300">
+                    Original suggestion created {new Date(latestWorkoutFromStore.originalAISuggestion.createdAt).toLocaleDateString()}
+                  </p>
+                  <Collapsible>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900">
+                        View original suggestion →
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <pre className="text-xs bg-white dark:bg-gray-900 p-3 rounded mt-2 max-h-48 overflow-y-auto border border-purple-200 dark:border-purple-800">
+                        {formatWorkoutAsText(latestWorkoutFromStore.originalAISuggestion.exercises)}
+                      </pre>
+                    </CollapsibleContent>
+                  </Collapsible>
+                  <Button 
+                    size="sm"
+                    onClick={handleRevertToOriginal}
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    <RotateCcw className="h-3 w-3 mr-2" />
+                    Revert to AI Suggestion
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {/* Tabs for UI/Text Editor */}
           <Tabs value={activeTab} onValueChange={handleTabChange}>
             <TabsList className="grid w-full grid-cols-2">
@@ -479,6 +682,73 @@ export function WorkoutExecutionDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    
+    {/* Confirmation Dialogs */}
+    
+    {/* Revert Confirmation Dialog */}
+    <Dialog open={showRevertConfirm} onOpenChange={setShowRevertConfirm}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-orange-500" />
+            Revert to AI Suggestion?
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            This will discard all your manual changes and restore the original AI Coach workout suggestion.
+          </p>
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              This action cannot be undone. All your modifications will be permanently lost.
+            </AlertDescription>
+          </Alert>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowRevertConfirm(false)}>
+            Cancel
+          </Button>
+          <Button variant="default" onClick={confirmRevert} className="bg-purple-600 hover:bg-purple-700">
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Revert to AI Suggestion
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    
+    {/* Delete Confirmation Dialog */}
+    <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-red-500" />
+            Delete Workout?
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete "{executionState.workout.name}"?
+          </p>
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              This action cannot be undone. The workout and all its data will be permanently deleted.
+            </AlertDescription>
+          </Alert>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={confirmDelete}>
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete Workout
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

@@ -15,19 +15,39 @@ export interface DateRange {
  * @returns ISO date string for Monday of the week
  */
 export function getWeekStartDate(date: Date = new Date()): string {
+  const inputDate = date.toISOString().split('T')[0];
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const day = d.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
   
+  console.log('[dateUtils] getWeekStartDate input:', inputDate, 'day:', day);
+  
   // Calculate offset to Monday
-  const offset = day === 0 ? -6 : 1 - day; // Sunday: go back 6 days, Others: go to Monday
+  // Standard Mon-Sun week: Sunday is the LAST day of the week
+  // Sunday belongs to the week starting the PREVIOUS Monday (6 days earlier)
+  // For other days: calculate how many days back to Monday
+  const offset = day === 0 ? -6 : 1 - day; // Sunday: -6 (go back to Monday), Mon: 0, Tue: -1, etc.
+  
+  console.log('[dateUtils] Offset to Monday:', offset);
+  
   d.setDate(d.getDate() + offset);
   
-  // Format as YYYY-MM-DD
+  // Format as YYYY-MM-DD using LOCAL date components (not UTC)
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const dayOfMonth = String(d.getDate()).padStart(2, '0');
   
-  return `${year}-${month}-${dayOfMonth}`;
+  const result = `${year}-${month}-${dayOfMonth}`;
+  
+  console.log('[dateUtils] Result:', result, 'day:', new Date(result).getDay());
+  
+  // Validate result is actually a Monday
+  const resultDay = new Date(result).getDay();
+  if (resultDay !== 1) {
+    console.error('[dateUtils] ERROR: getWeekStartDate returned non-Monday:', result, 'day:', resultDay);
+    console.error('[dateUtils] Input was:', inputDate, 'day:', day);
+  }
+  
+  return result;
 }
 
 /**
@@ -66,27 +86,31 @@ export function addDays(dateStr: string, days: number): string {
 
 /**
  * Calculate initial week date range based on current day
- * Mon-Thu: Current week (Monday to Sunday)
- * Fri-Sun: Extended period (today to next Sunday)
+ * Mon-Thu: Today to end of current week (Sunday)
+ * Fri-Sun: Today to end of next week (next Sunday)
+ * 
+ * This ensures the first microcycle always starts from TODAY, not from the week's Monday.
  * 
  * @param date - The date to calculate from (defaults to today)
  * @returns DateRange object with start and end dates
  */
 export function calculateInitialWeekRange(date: Date = new Date()): DateRange {
-  const d = new Date(date);
-  d.setHours(12, 0, 0, 0); // Noon to avoid timezone issues
-  
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const dayOfWeek = d.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
   const isMonToThu = dayOfWeek >= 1 && dayOfWeek <= 4;
   
+  // Format today as YYYY-MM-DD using LOCAL date components (not UTC)
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const today = `${year}-${month}-${day}`;
+  
   if (isMonToThu) {
-    // Monday-Thursday: Generate current week (Monday to Sunday)
-    const start = getWeekStartDate(d);
+    // Monday-Thursday: Generate from TODAY to end of current week (Sunday)
     const end = getWeekEndDate(d);
-    return { start, end };
+    return { start: today, end };
   } else {
-    // Friday-Sunday: Generate extended period (today to next Sunday)
-    const today = d.toISOString().split('T')[0];
+    // Friday-Sunday: Generate from TODAY to end of next week (next Sunday)
     const nextSunday = addDays(getWeekEndDate(d), 7);
     return { start: today, end: nextSunday };
   }
@@ -113,6 +137,35 @@ export function calculateDateFromDayOfWeek(dayOfWeek: number, weekStartDate: str
   // Convert Sunday (0) to offset 6, Monday (1) to offset 0, etc.
   const dayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
   return addDays(weekStartDate, dayOffset);
+}
+
+/**
+ * Calculate date from dayOfWeek for a microcycle that may not start on Monday
+ * Finds the NEXT occurrence of the target dayOfWeek within the date range
+ * @param dayOfWeek - Target day of week (0=Sunday, 1=Monday, etc.)
+ * @param rangeStart - Start date of the range (ISO string)
+ * @param rangeEnd - End date of the range (ISO string)
+ * @returns ISO date string for the target day, or null if not found in range
+ */
+export function calculateDateInRange(dayOfWeek: number, rangeStart: string, rangeEnd: string): string | null {
+  const startDate = new Date(rangeStart);
+  const endDate = new Date(rangeEnd);
+  
+  // Iterate through the range to find matching dayOfWeek
+  let currentDate = new Date(startDate);
+  while (currentDate <= endDate) {
+    if (currentDate.getDay() === dayOfWeek) {
+      // Found matching day
+      const year = currentDate.getFullYear();
+      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+      const day = String(currentDate.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    // Move to next day
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  
+  return null; // Day not found in range
 }
 
 /**

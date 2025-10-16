@@ -19,6 +19,7 @@ import { sanitizeWorkoutForFirebase } from '@/lib/firebaseUtils';
 import { calculateInitialWeekRange, calculateDateFromDayOfWeek, calculateNextWeekRange, getWeekStartDate, getWeekEndDate } from '@/lib/dateUtils';
 import { migratePlanWithDates } from '@/lib/dateMigration';
 import { saveWorkoutHistory, extractCompletedWorkouts, getWorkoutHistory } from '@/lib/workoutHistoryService';
+import { callOpenAIProxy } from '@/lib/openaiProxy';
 
 interface FitnessPlanState {
   currentPlan: FitnessPlan | null;
@@ -138,35 +139,23 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           .replace('{WEEK_DATE_RANGE}', JSON.stringify(weekDateRange, null, 2))
           .replace('{WORKOUT_HISTORY}', JSON.stringify([], null, 2)); // Empty for initial generation
 
-        // Call OpenAI API
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-              {
-                role: 'system',
-                content: promptConfig.system_prompt
-              },
-              {
-                role: 'user',
-                content: userPrompt
-              }
-            ],
-            temperature: 0.7,
-            max_tokens: 4000,
-          }),
+        // Call OpenAI API through proxy
+        const data = await callOpenAIProxy({
+          apiKey,
+          messages: [
+            {
+              role: 'system',
+              content: promptConfig.system_prompt
+            },
+            {
+              role: 'user',
+              content: userPrompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 4000,
         });
 
-        if (!response.ok) {
-          throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json();
         const content = data.choices[0]?.message?.content;
 
         if (!content) {
@@ -796,38 +785,25 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           .replace('{WEEKLY_REFLECTION}', weeklyNotes)
           .replace('{WORKOUT_HISTORY}', JSON.stringify(workoutHistory, null, 2));
 
-        console.log('[Next Week Generation] Calling OpenAI API...');
+        console.log('[Next Week Generation] Calling OpenAI API via proxy...');
 
-        // 7. Call OpenAI API
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openaiApiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-              {
-                role: 'system',
-                content: promptConfig.system_prompt,
-              },
-              {
-                role: 'user',
-                content: userPrompt,
-              },
-            ],
-            temperature: 0.7,
-            max_tokens: 4000,
-          }),
+        // 7. Call OpenAI API through proxy
+        const data = await callOpenAIProxy({
+          apiKey: openaiApiKey,
+          messages: [
+            {
+              role: 'system',
+              content: promptConfig.system_prompt,
+            },
+            {
+              role: 'user',
+              content: userPrompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 4000,
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`OpenAI API error: ${response.statusText} - ${errorText}`);
-        }
-
-        const data = await response.json();
         const content = data.choices[0]?.message?.content;
 
         if (!content) {
@@ -995,38 +971,25 @@ export const useFitnessPlanStore = create<FitnessPlanState>()(
           .replace('{WEEK_DATE_RANGE}', JSON.stringify(weekDateRange, null, 2))
           .replace('{WORKOUT_HISTORY}', JSON.stringify(workoutHistory, null, 2));
 
-        console.log('[Gap Recovery] Calling OpenAI API...');
+        console.log('[Gap Recovery] Calling OpenAI API via proxy...');
 
-        // 7. Call OpenAI API
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openaiApiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            messages: [
-              {
-                role: 'system',
-                content: promptConfig.system_prompt,
-              },
-              {
-                role: 'user',
-                content: userPrompt,
-              },
-            ],
-            temperature: 0.7,
-            max_tokens: 4000,
-          }),
+        // 7. Call OpenAI API through proxy
+        const data = await callOpenAIProxy({
+          apiKey: openaiApiKey,
+          messages: [
+            {
+              role: 'system',
+              content: promptConfig.system_prompt,
+            },
+            {
+              role: 'user',
+              content: userPrompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 4000,
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`OpenAI API error: ${response.statusText} - ${errorText}`);
-        }
-
-        const data = await response.json();
         const content = data.choices[0]?.message?.content;
 
         if (!content) {

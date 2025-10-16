@@ -58,6 +58,13 @@ export interface WorkoutDocument {
   source: WorkoutSource; // Track if created manually or by AI Coach
   aiCoachContext?: AICoachContext; // Set if source === 'ai-coach'
   
+  // AI suggestion preservation
+  originalAISuggestion?: {
+    exercises: Exercise[]; // Original AI-generated exercises
+    createdAt: string; // When the original suggestion was created
+  };
+  hasManualChanges?: boolean; // Track if user modified the workout
+  
   // Ordering
   rank: string; // LexoRank for drag & drop ordering within days
   

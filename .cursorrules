@@ -373,7 +373,43 @@ npm run lint         # Run ESLint
 - **Integration**: Seamlessly integrated with existing plan generation, profile editing, and routing
 - **Testing**: Use Testing Page "👋 Long Gap State" button to simulate gaps
 
-### 17. Standalone Workout Tracking System (2025-10-12) - **PHASE A COMPLETE**
+### 17. AI Coach Date Calculation Fix (2025-10-14)
+- **Files**: 
+  - `src/lib/dateUtils.ts` - Fixed `calculateInitialWeekRange()`
+  - Updated `WEEK_COMPLETION_SPEC_V2.md` - Clarified date logic in spec
+- **Description**: Fixed initial microcycle date range calculation
+- **Bug Fixed**: 
+  - **Issue**: Mon-Thu generated full week from Monday (e.g., Oct 13-19 instead of Oct 14-19)
+  - **Root Cause**: `calculateInitialWeekRange()` used `getWeekStartDate()` instead of today's date
+  - **Fix**: Changed to always start from TODAY, not from the week's Monday
+- **Correct Behavior**:
+  - **Mon-Thu**: Generate from TODAY to end of current week (Sunday)
+    - Example: Generate on Tue Oct 14 → Oct 14-19 (6 days)
+  - **Fri-Sun**: Generate from TODAY to end of next week (next Sunday)
+    - Example: Generate on Fri Oct 17 → Oct 17-26 (10 days)
+- **Why**: Prevents generating plans that include past dates, provides adequate planning horizon
+- **Spec Reference**: `COMPLETE_APP_LOOP_UX.md` lines 34-48 (already correct), `WEEK_COMPLETION_SPEC_V2.md` lines 67-82 (now updated)
+
+### 18. AI Coach Workout Visibility Fix (2025-10-14)
+- **Files**:
+  - `src/pages/AICoachPage.tsx` - **KEY FIX**: Start workouts real-time sync
+  - `src/components/ai-coach/MicrocycleGenerationFlow.tsx` - Wait for all workouts to sync
+- **Description**: Fixed workouts not appearing immediately after generation
+- **Bug Fixed**:
+  - **Issue**: Workouts don't appear until user visits Workouts page, then comes back to AI Coach
+  - **Root Cause**: AI Coach page wasn't starting the workouts real-time listener! It only started `aiCoachStore` sync, not `workoutsStore` sync
+  - **Fix**: AI Coach page now starts both `aiCoachStore` AND `workoutsStore` real-time sync on mount
+- **Implementation**:
+  - `AICoachPage.tsx`: Added `loadWorkouts()` and `startWorkoutsSync()` in useEffect (alongside existing AI plan sync)
+  - `MicrocycleGenerationFlow.tsx`: Added `useEffect` that watches workouts array and transitions to review when all expected IDs appear
+  - Includes 5-second timeout as fallback
+- **Why This Matters**: 
+  - `addWorkout` intentionally doesn't update local state to prevent duplicate entries
+  - It relies on real-time listener to update the store
+  - Without the listener running, workouts never appear!
+- **Related Pattern**: Follows real-time sync architecture from Feature #14
+
+### 19. Standalone Workout Tracking System (2025-10-12) - **PHASE A COMPLETE**
 - **Files**:
   - `src/types/workout.ts` - Workout document types independent from AI plan
   - `src/stores/workoutsStore.ts` - Complete workout management store with real-time sync

@@ -67,12 +67,18 @@ const promptKey = isMonToThu
 **Step 2: Calculate Date Range**
 ```typescript
 // App calculates date range, NOT the AI
-const weekStartDate = getMonday(today); // This week's Monday
+// IMPORTANT: Always start from TODAY, not from the week's Monday
+const weekStartDate = formatDate(today); // TODAY (not this week's Monday)
 const weekEndDate = isMonToThu 
-  ? getSunday(today) // This week's Sunday
-  : getSunday(addDays(today, 7)); // Next week's Sunday
+  ? getSunday(today) // End of current week (Sunday)
+  : getSunday(addDays(today, 7)); // End of next week (next Sunday)
 
 const dateRange = { start: weekStartDate, end: weekEndDate };
+
+// Examples:
+// - Generate on Mon Oct 13 → Oct 13-19 (Mon-Sun, 7 days)
+// - Generate on Tue Oct 14 → Oct 14-19 (Tue-Sun, 6 days)
+// - Generate on Fri Oct 17 → Oct 17-26 (Fri-next Sun, 10 days)
 ```
 
 **Step 3: AI Prompt Data**

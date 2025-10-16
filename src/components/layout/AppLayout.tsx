@@ -20,7 +20,8 @@ import {
   Activity,
   TrendingUp,
   Calendar,
-  TestTube
+  TestTube,
+  Brain
 } from 'lucide-react';
 
 /**
@@ -35,6 +36,7 @@ export function AppLayout() {
   const navItems = [
     { id: 'plan', label: 'Fitness Plan', icon: Calendar, path: '/app' },
     { id: 'workouts', label: 'Workouts', icon: Activity, path: '/app/workouts' },
+    { id: 'ai-coach', label: 'AI Coach', icon: Brain, path: '/app/ai-coach' },
     { id: 'progress', label: 'Progress', icon: TrendingUp, path: '/app/progress' },
     { id: 'testing', label: 'Testing', icon: TestTube, path: '/app/testing' },
   ];

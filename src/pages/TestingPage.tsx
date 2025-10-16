@@ -1,12 +1,17 @@
 import { useAuthStore } from '@/stores/authStore';
 import { useFitnessPlanStore } from '@/stores/fitnessPlanStore';
+import { useAICoachStore } from '@/stores/aiCoachStore';
+import { useWorkoutsStore } from '@/stores/workoutsStore';
 import { useNavigate } from 'react-router-dom';
 import { fetchAndActivate, getValue } from 'firebase/remote-config';
-import { remoteConfig } from '@/lib/firebase';
+import { remoteConfig, db } from '@/lib/firebase';
+import { doc, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { TestTube, RotateCcw, User, Calendar, History } from 'lucide-react';
+import { TestTube, RotateCcw, User, Calendar, History, Brain, Trash2 } from 'lucide-react';
 import { addDays, getTodayISO } from '@/lib/dateUtils';
 import { checkWeekCompletionState } from '@/lib/weekCompletionLogic';
 import { getWorkoutHistory } from '@/lib/workoutHistoryService';
@@ -19,7 +24,10 @@ export function TestingPage() {
   const navigate = useNavigate();
   const { user, updateProfile } = useAuthStore();
   const { currentPlan, deletePlan, updatePlan } = useFitnessPlanStore();
+  const { currentPlan: aiPlan, loadPlan: loadAIPlan } = useAICoachStore();
+  const workoutsStore = useWorkoutsStore();
   const [historyCount, setHistoryCount] = useState<number | null>(null);
+  const [mockDate, setMockDate] = useState<string>('');
 
   const handleResetOnboarding = async () => {
     if (!user) return;
@@ -245,6 +253,214 @@ export function TestingPage() {
                   : 'No fitness plan exists'
                 }
               </p>
+            </CardContent>
+          </Card>
+
+          {/* AI Coach Controls */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Brain className="h-5 w-5" />
+                <span>AI Coach Controls</span>
+              </CardTitle>
+              <CardDescription>
+                Manage AI Coach data for testing
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Button 
+                  onClick={async () => {
+                    if (!user) return;
+                    try {
+                      const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
+                      await deleteDoc(planRef);
+                      await loadAIPlan();
+                      alert('AI Coach plan deleted!');
+                    } catch (error) {
+                      console.error('Failed to delete AI plan:', error);
+                    }
+                  }}
+                  variant="destructive"
+                  className="w-full"
+                  disabled={!aiPlan}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Entire AI Plan
+                </Button>
+                
+                <Button 
+                  onClick={async () => {
+                    if (!user || !aiPlan?.currentMicrocycle) return;
+                    try {
+                      // Smart deletion: Only delete workouts with no progress
+                      const microcycleWorkouts = workoutsStore.workouts.filter(w => 
+                        aiPlan.currentMicrocycle?.workoutIds.includes(w.id)
+                      );
+                      
+                      let deletedCount = 0;
+                      let preservedCount = 0;
+                      
+                      for (const workout of microcycleWorkouts) {
+                        // Check if workout has any progress (any completed sets)
+                        const hasAnyProgress = workout.exercises.some(ex =>
+                          ex.sets.some(set => set.completed === true)
+                        );
+                        
+                        // Delete only if: no progress AND status is planned
+                        if (!hasAnyProgress && workout.status === 'planned') {
+                          await workoutsStore.deleteWorkout(workout.id);
+                          deletedCount++;
+                        } else {
+                          preservedCount++;
+                        }
+                      }
+                      
+                      // Clear microcycle reference
+                      const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
+                      await updateDoc(planRef, {
+                        currentMicrocycle: null,
+                        status: 'goals-approved',
+                        updatedAt: serverTimestamp()
+                      });
+                      await loadAIPlan();
+                      
+                      alert(
+                        `AI Coach microcycle cleared!\n\n` +
+                        `✅ Deleted: ${deletedCount} untouched workout(s)\n` +
+                        `💪 Preserved: ${preservedCount} workout(s) with progress\n` +
+                        `Goals preserved.`
+                      );
+                    } catch (error) {
+                      console.error('Failed to clear microcycle:', error);
+                      alert('Failed to clear microcycle');
+                    }
+                  }}
+                  variant="outline"
+                  className="w-full"
+                  disabled={!aiPlan?.currentMicrocycle}
+                >
+                  Clear Microcycle Only
+                </Button>
+                
+                <Button 
+                  onClick={async () => {
+                    if (!user) return;
+                    try {
+                      // Delete all AI-generated workouts (keep manual ones)
+                      const aiWorkouts = workoutsStore.workouts.filter(w => w.source === 'ai-coach');
+                      for (const workout of aiWorkouts) {
+                        await workoutsStore.deleteWorkout(workout.id);
+                      }
+                      alert(`Deleted ${aiWorkouts.length} AI-generated workouts!`);
+                    } catch (error) {
+                      console.error('Failed to delete AI workouts:', error);
+                    }
+                  }}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Delete All AI Workouts
+                </Button>
+              </div>
+              
+              <p className="text-sm text-muted-foreground">
+                {aiPlan 
+                  ? `AI Plan Status: ${aiPlan.status}, Week: ${aiPlan.currentMicrocycle?.week || 'N/A'}`
+                  : 'No AI plan exists'
+                }
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Week Completion Button Testing */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Calendar className="h-5 w-5" />
+                <span>Week Completion Testing</span>
+              </CardTitle>
+              <CardDescription>
+                Test week completion button states by manipulating microcycle dates
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="mock-date">Set Current Date (for testing)</Label>
+                <Input
+                  id="mock-date"
+                  type="date"
+                  value={mockDate}
+                  onChange={(e) => setMockDate(e.target.value)}
+                  placeholder="Leave empty for actual today"
+                />
+                <p className="text-xs text-muted-foreground">
+                  This doesn't actually change dates, but you can use it to test what dates to set
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Quick Test Scenarios:</p>
+                <Button 
+                  onClick={async () => {
+                    if (!user || !aiPlan?.currentMicrocycle) return;
+                    const today = new Date().toISOString().split('T')[0];
+                    const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
+                    await updateDoc(planRef, {
+                      'currentMicrocycle.dateRange.end': today,
+                      updatedAt: serverTimestamp()
+                    });
+                    await loadAIPlan();
+                    alert('Set week end to TODAY (button should be Ready)');
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  disabled={!aiPlan?.currentMicrocycle}
+                >
+                  📅 Week Ends TODAY
+                </Button>
+                
+                <Button 
+                  onClick={async () => {
+                    if (!user || !aiPlan?.currentMicrocycle) return;
+                    const yesterday = addDays(new Date().toISOString().split('T')[0], -1);
+                    const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
+                    await updateDoc(planRef, {
+                      'currentMicrocycle.dateRange.end': yesterday,
+                      updatedAt: serverTimestamp()
+                    });
+                    await loadAIPlan();
+                    alert('Set week end to YESTERDAY (button should be Overdue)');
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  disabled={!aiPlan?.currentMicrocycle}
+                >
+                  ⚠️ Week Ended YESTERDAY
+                </Button>
+                
+                <Button 
+                  onClick={async () => {
+                    if (!user || !aiPlan?.currentMicrocycle) return;
+                    const nextWeek = addDays(new Date().toISOString().split('T')[0], 7);
+                    const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
+                    await updateDoc(planRef, {
+                      'currentMicrocycle.dateRange.end': nextWeek,
+                      updatedAt: serverTimestamp()
+                    });
+                    await loadAIPlan();
+                    alert('Set week end to NEXT WEEK (button should be Disabled)');
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  disabled={!aiPlan?.currentMicrocycle}
+                >
+                  ⏸️ Week Still ONGOING
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

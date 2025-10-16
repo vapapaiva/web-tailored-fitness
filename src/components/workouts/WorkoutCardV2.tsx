@@ -148,6 +148,11 @@ export const WorkoutCardV2 = React.memo(function WorkoutCardV2({
   };
 
   const statusStyling = getStatusStyling();
+  
+  // AI Coach workout styling
+  const aiCoachStyling = workout.source === 'ai-coach'
+    ? 'border-dashed border-purple-300 dark:border-purple-700 bg-purple-50/30 dark:bg-purple-950/20'
+    : '';
 
   return (
     <Card
@@ -155,7 +160,7 @@ export const WorkoutCardV2 = React.memo(function WorkoutCardV2({
       style={style}
       className={`cursor-pointer transition-all hover:shadow-md ${
         isDragging ? 'shadow-lg' : ''
-      } ${statusStyling.cardClass}`}
+      } ${statusStyling.cardClass} ${aiCoachStyling}`}
       {...(isDraggable ? attributes : {})}
       {...(isDraggable ? listeners : {})}
       onClick={handleCardClick}
@@ -200,6 +205,13 @@ export const WorkoutCardV2 = React.memo(function WorkoutCardV2({
                 >
                   {workout.source === 'ai-coach' && <Sparkles className="h-3 w-3 mr-1" />}
                   {workout.source === 'ai-coach' ? 'AI Coach' : 'Manual'}
+                </Badge>
+              )}
+              
+              {/* Modified Badge */}
+              {workout.hasManualChanges && workout.source === 'ai-coach' && (
+                <Badge variant="outline" className="text-xs border-orange-300 text-orange-700 dark:border-orange-700 dark:text-orange-300">
+                  Modified
                 </Badge>
               )}
             </div>

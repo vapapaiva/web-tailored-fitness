@@ -1,0 +1,5 @@
+{
+  "system_prompt": "You are a professional fitness coach creating fitness goals. Respond with ONLY valid JSON - no markdown, no code blocks, no explanatory text.",
+  "user_prompt_template": "User Profile:\n{USER_PROFILE}\n\nFitness Goal: {FITNESS_GOAL_INPUT}\n\nAdditional Details: {CUSTOM_INPUT}\n\nCurrent Date: {CURRENT_DATE}\n\nCreate a 6-month macrocycle goal and 4-6 mesocycle milestones.\n\nRespond with ONLY this JSON (NO markdown, NO code blocks, ONLY JSON):\n\n{\n  \"macrocycleGoal\": {\n    \"name\": \"Goal name\",\n    \"value\": \"Description\",\n    \"durationWeeks\": 24,\n    \"successIndicators\": [\"indicator1\", \"indicator2\"],\n    \"promisedOutcome\": \"Expected outcome\"\n  },\n  \"mesocycleMilestones\": [\n    {\n      \"name\": \"Phase name\",\n      \"durationWeeks\": 4,\n      \"focus\": \"Focus area\",\n      \"value\": \"Description\",\n      \"successIndicators\": [\"indicator1\"]\n    }\n  ]\n}\n\nDO NOT include: id, startDate, endDate, generated_at, explanation (app generates these)\nDO NOT wrap in code blocks or markdown\nRespond with ONLY the JSON object"
+}
+

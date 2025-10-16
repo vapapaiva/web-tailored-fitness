@@ -212,7 +212,9 @@ export const useWorkoutsStore = create<WorkoutsState>()(
 
         // Compute dayOfWeek if date is being updated
         let dayOfWeek = updates.dayOfWeek;
-        if (updates.date && !dayOfWeek) {
+        if (updates.date && dayOfWeek === undefined) {
+          // IMPORTANT: Check for undefined explicitly, not !dayOfWeek
+          // because dayOfWeek can be 0 (Sunday) which is falsy!
           const date = new Date(updates.date);
           dayOfWeek = date.getDay();
         }
@@ -221,7 +223,7 @@ export const useWorkoutsStore = create<WorkoutsState>()(
         const updatedWorkout: WorkoutDocument = {
           ...existingWorkout,
           ...updates,
-          dayOfWeek: dayOfWeek || existingWorkout.dayOfWeek,
+          dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : existingWorkout.dayOfWeek,
           updatedAt: new Date().toISOString(),
           lastMutation: {
             clientId: mutationState.clientId,
@@ -238,7 +240,7 @@ export const useWorkoutsStore = create<WorkoutsState>()(
         const workoutRef = doc(db, 'users', user.uid, 'workouts', id);
         await updateDoc(workoutRef, sanitizeWorkoutForFirebase({
           ...updates,
-          dayOfWeek: dayOfWeek || existingWorkout.dayOfWeek,
+          dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : existingWorkout.dayOfWeek,
           updatedAt: serverTimestamp(),
           lastMutation: {
             clientId: mutationState.clientId,
@@ -414,13 +416,13 @@ export const useWorkoutsStore = create<WorkoutsState>()(
 
     getPastWorkouts: () => {
       const { workouts } = get();
-      const today = getTodayISO();
-      const currentWeekEnd = getWeekEndDate();
+      const currentWeekStart = getWeekStartDate();
       
       return workouts
         .filter(w => {
-          // Must have a date, be before today (but not in current week), and not be completed
-          return w.date && w.date < today && w.date < currentWeekEnd && w.status !== 'completed';
+          // Must have a date, be before current week start, and not be completed
+          // This excludes any workout in the current week (including Monday)
+          return w.date && w.date < currentWeekStart && w.status !== 'completed';
         })
         .sort((a, b) => (a.date || '').localeCompare(b.date || '')); // oldest first
     },
