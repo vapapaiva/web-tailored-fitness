@@ -13,6 +13,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
 } from '@dnd-kit/core';
 import type { WorkoutDocument } from '@/types/workout';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
@@ -34,6 +35,28 @@ import { generateRankAtPosition } from '@/lib/lexoRank';
 
 interface PlannedSectionProps {
   onAddWorkout: () => void;
+}
+
+// Droppable wrapper component for subsections
+function DroppableSubsection({ 
+  id, 
+  children, 
+  className = '' 
+}: { 
+  id: string; 
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  
+  return (
+    <div 
+      ref={setNodeRef}
+      className={`${className} ${isOver ? 'bg-primary/5 border-2 border-dashed border-primary rounded-lg' : ''}`}
+    >
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -102,10 +125,18 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
     
     const overId = over.id.toString();
     
+    console.log('[PlannedSection DND] Drop detected:', {
+      workoutName: draggedWorkout.name,
+      source: draggedWorkout.source,
+      targetId: overId
+    });
+    
     // Scenario 1: Dropped on a weekday (day-0 through day-6)
     if (overId.startsWith('day-')) {
       const targetDayOfWeek = parseInt(overId.replace('day-', ''));
       const targetDate = calculateDateFromDayOfWeek(targetDayOfWeek, weekStart);
+      
+      console.log('[PlannedSection DND] Dropped on weekday:', { targetDayOfWeek, targetDate });
       
       // Validate for AI Coach workouts
       if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
@@ -130,12 +161,46 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
         rank: newRank
       });
       
+      console.log('[PlannedSection DND] Moved to weekday successfully');
       return;
     }
     
     // Scenario 2: Dropped on subsection (past, later, without-date)
-    if (['past', 'later', 'without-date'].includes(overId)) {
-      // From weekday to subsection - need to ask for specific date
+    if (overId === 'without-date') {
+      console.log('[PlannedSection DND] Dropped on without-date section');
+      
+      // Prevent AI Coach workouts from losing their date
+      if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext) {
+        console.log('[PlannedSection DND] Blocked: AI workout cannot be without date');
+        setDndError('AI Coach workouts must have a date to stay aligned with your training plan');
+        setTimeout(() => setDndError(''), 5000);
+        return;
+      }
+      
+      // Drop to "Without Date" - clear the date
+      console.log('[PlannedSection DND] Clearing date for manual workout');
+      await updateWorkout(draggedWorkout.id, {
+        date: undefined,
+        dayOfWeek: undefined
+      });
+      console.log('[PlannedSection DND] Date cleared successfully');
+      return;
+    }
+    
+    if (['past', 'later'].includes(overId)) {
+      console.log('[PlannedSection DND] Dropped on past/later - showing date picker');
+      
+      // Validate AI Coach workouts can't be moved to these sections with date picker
+      // They must stay within microcycle range
+      if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
+        if (draggedWorkout.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
+          setDndError('AI Coach workouts must stay within the current week of the microcycle');
+          setTimeout(() => setDndError(''), 5000);
+          return;
+        }
+      }
+      
+      // From weekday to past/later - ask for specific date
       setPendingWorkout(draggedWorkout);
       setPendingDate(draggedWorkout.date || '');
       setShowDatePicker(true);
@@ -147,6 +212,8 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
     if (targetWorkout && targetWorkout.dayOfWeek !== undefined) {
       // Target is in current week
       const targetDate = targetWorkout.date || calculateDateFromDayOfWeek(targetWorkout.dayOfWeek, weekStart);
+      
+      console.log('[PlannedSection DND] Dropped on workout in current week:', { targetDate });
       
       // Validate for AI Coach workouts
       if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
@@ -165,11 +232,26 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
         dayOfWeek: targetWorkout.dayOfWeek,
         rank: targetWorkout.rank // Will be adjusted by lexoRank if needed
       });
+      
+      console.log('[PlannedSection DND] Moved to workout position successfully');
     }
   };
   
   const handleDatePickerConfirm = async () => {
     if (!pendingWorkout || !pendingDate) return;
+    
+    // Validate for AI Coach workouts
+    if (pendingWorkout.source === 'ai-coach' && pendingWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
+      if (pendingWorkout.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
+        const { start, end } = aiPlan.currentMicrocycle.dateRange;
+        if (pendingDate < start || pendingDate > end) {
+          setDndError(`Date must be within microcycle range: ${start} to ${end}`);
+          setTimeout(() => setDndError(''), 5000);
+          // Don't close dialog, let user fix the date
+          return;
+        }
+      }
+    }
     
     const newDayOfWeek = new Date(pendingDate).getDay();
     
@@ -239,22 +321,24 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
           <>
             {/* Past (Collapsible) */}
             {pastWorkouts.length > 0 && (
-              <Collapsible open={isPastOpen} onOpenChange={setIsPastOpen}>
-                <CollapsibleTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    className="w-full justify-between hover:bg-muted/50"
-                  >
-                    <span className="font-medium">
-                      Past <span className="text-muted-foreground">({pastWorkouts.length})</span>
-                    </span>
-                    {isPastOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2">
-                  <PastWorkouts workouts={pastWorkouts} />
-                </CollapsibleContent>
-              </Collapsible>
+              <DroppableSubsection id="past">
+                <Collapsible open={isPastOpen} onOpenChange={setIsPastOpen}>
+                  <CollapsibleTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      className="w-full justify-between hover:bg-muted/50"
+                    >
+                      <span className="font-medium">
+                        Past <span className="text-muted-foreground">({pastWorkouts.length})</span>
+                      </span>
+                      {isPastOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <PastWorkouts workouts={pastWorkouts} />
+                  </CollapsibleContent>
+                </Collapsible>
+              </DroppableSubsection>
             )}
 
             {/* Current Week (Always Expanded) */}
@@ -267,45 +351,54 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
 
             {/* Later (Collapsible) */}
             {laterWorkouts.length > 0 && (
-              <Collapsible open={isLaterOpen} onOpenChange={setIsLaterOpen}>
-                <CollapsibleTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    className="w-full justify-between hover:bg-muted/50"
-                  >
-                    <span className="font-medium">
-                      Later <span className="text-muted-foreground">({laterWorkouts.length})</span>
-                    </span>
-                    {isLaterOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2">
-                  <LaterWorkouts workouts={laterWorkouts} />
-                </CollapsibleContent>
-              </Collapsible>
+              <DroppableSubsection id="later">
+                <Collapsible open={isLaterOpen} onOpenChange={setIsLaterOpen}>
+                  <CollapsibleTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      className="w-full justify-between hover:bg-muted/50"
+                    >
+                      <span className="font-medium">
+                        Later <span className="text-muted-foreground">({laterWorkouts.length})</span>
+                      </span>
+                      {isLaterOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <LaterWorkouts workouts={laterWorkouts} />
+                  </CollapsibleContent>
+                </Collapsible>
+              </DroppableSubsection>
             )}
 
-            {/* Without Date (Collapsible) */}
-            {withoutDateWorkouts.length > 0 && (
-              <Collapsible open={isWithoutDateOpen} onOpenChange={setIsWithoutDateOpen}>
-                <CollapsibleTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    className="w-full justify-between hover:bg-muted/50"
-                  >
-                    <span className="font-medium">
-                      Without Date <span className="text-muted-foreground">({withoutDateWorkouts.length})</span>
-                    </span>
-                    {isWithoutDateOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2">
-                  <WithoutDateWorkouts workouts={withoutDateWorkouts} />
-                </CollapsibleContent>
-              </Collapsible>
-            )}
           </>
         )}
+        
+        {/* Without Date (Always visible as drop target, even when empty) */}
+        <DroppableSubsection id="without-date" className="min-h-[60px]">
+          <Collapsible open={isWithoutDateOpen} onOpenChange={setIsWithoutDateOpen}>
+            <CollapsibleTrigger asChild>
+              <Button 
+                variant="ghost" 
+                className="w-full justify-between hover:bg-muted/50"
+              >
+                <span className="font-medium">
+                  Without Date <span className="text-muted-foreground">({withoutDateWorkouts.length})</span>
+                </span>
+                {isWithoutDateOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              {withoutDateWorkouts.length > 0 ? (
+                <WithoutDateWorkouts workouts={withoutDateWorkouts} />
+              ) : (
+                <div className="text-center py-6 text-sm text-muted-foreground border-2 border-dashed rounded-lg">
+                  Drop workouts here to remove their scheduled date
+                </div>
+              )}
+            </CollapsibleContent>
+          </Collapsible>
+        </DroppableSubsection>
       </CardContent>
     </Card>
     
@@ -348,7 +441,14 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
               value={pendingDate}
               onChange={(e) => setPendingDate(e.target.value)}
               className="w-full"
+              min={pendingWorkout?.source === 'ai-coach' && aiPlan?.currentMicrocycle ? aiPlan.currentMicrocycle.dateRange.start : undefined}
+              max={pendingWorkout?.source === 'ai-coach' && aiPlan?.currentMicrocycle ? aiPlan.currentMicrocycle.dateRange.end : undefined}
             />
+            {pendingWorkout?.source === 'ai-coach' && aiPlan?.currentMicrocycle && (
+              <p className="text-xs text-purple-600 dark:text-purple-400">
+                AI Coach workout • Must be between {aiPlan.currentMicrocycle.dateRange.start} and {aiPlan.currentMicrocycle.dateRange.end}
+              </p>
+            )}
           </div>
           <Alert>
             <AlertCircle className="h-4 w-4" />
@@ -358,7 +458,11 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
           </Alert>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setShowDatePicker(false)}>
+          <Button variant="outline" onClick={() => {
+            setShowDatePicker(false);
+            setPendingWorkout(null);
+            setPendingDate('');
+          }}>
             Cancel
           </Button>
           <Button onClick={handleDatePickerConfirm} disabled={!pendingDate}>

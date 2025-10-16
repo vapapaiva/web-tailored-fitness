@@ -13,6 +13,7 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc,
+  deleteField,
   query,
   where,
   orderBy,
@@ -128,7 +129,7 @@ export const useWorkoutsStore = create<WorkoutsState>()(
         const now = new Date().toISOString();
         
         // Generate rank for ordering
-        const { workouts } = get();
+        const { workouts, mutationState } = get();
         const existingRanks = workouts
           .filter(w => {
             const wDate = w.date || null;
@@ -147,6 +148,12 @@ export const useWorkoutsStore = create<WorkoutsState>()(
           const date = new Date(workoutData.date);
           dayOfWeek = date.getDay();
         }
+        
+        // Generate mutation for tracking
+        const mutation = addPendingMutation(mutationState, {
+          type: 'workout_create',
+          data: { workoutId }
+        });
         
         const workout: WorkoutDocument = {
           id: workoutId,
@@ -170,15 +177,20 @@ export const useWorkoutsStore = create<WorkoutsState>()(
           rank,
           createdAt: now,
           updatedAt: now,
+          lastMutation: {
+            clientId: mutationState.clientId,
+            mutationId: mutation.id,
+            timestamp: mutation.timestamp
+          },
           ...workoutData // Allow overrides
         };
 
-        // Save to Firebase
+        // 1. IMMEDIATE: Add to local state for instant UI feedback
+        set({ workouts: [...workouts, workout] });
+
+        // 2. ASYNC: Save to Firebase
         const workoutRef = doc(db, 'users', user.uid, 'workouts', workoutId);
         await setDoc(workoutRef, sanitizeWorkoutForFirebase(workout));
-        
-        // Don't update local state here - let real-time listener handle it
-        // This prevents duplicate entries from both local update and Firebase sync
         
         console.log('[WorkoutsStore] Added workout:', workoutId);
         return workoutId;
@@ -212,18 +224,33 @@ export const useWorkoutsStore = create<WorkoutsState>()(
 
         // Compute dayOfWeek if date is being updated
         let dayOfWeek = updates.dayOfWeek;
-        if (updates.date && dayOfWeek === undefined) {
-          // IMPORTANT: Check for undefined explicitly, not !dayOfWeek
-          // because dayOfWeek can be 0 (Sunday) which is falsy!
-          const date = new Date(updates.date);
-          dayOfWeek = date.getDay();
+        
+        // Check if 'date' key is in updates (allows explicit undefined)
+        const isDateBeingUpdated = 'date' in updates;
+        const isDayOfWeekBeingUpdated = 'dayOfWeek' in updates;
+        
+        if (isDateBeingUpdated) {
+          if (updates.date) {
+            // Date is being SET - calculate dayOfWeek from it
+            if (dayOfWeek === undefined) {
+              const date = new Date(updates.date);
+              dayOfWeek = date.getDay();
+            }
+          } else {
+            // Date is being CLEARED (undefined) - also clear dayOfWeek unless explicitly set
+            if (!isDayOfWeekBeingUpdated) {
+              dayOfWeek = undefined;
+            }
+          }
         }
 
         // 1. IMMEDIATE: Update local state optimistically
         const updatedWorkout: WorkoutDocument = {
           ...existingWorkout,
           ...updates,
-          dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : existingWorkout.dayOfWeek,
+          dayOfWeek: isDayOfWeekBeingUpdated || isDateBeingUpdated 
+            ? dayOfWeek 
+            : existingWorkout.dayOfWeek,
           updatedAt: new Date().toISOString(),
           lastMutation: {
             clientId: mutationState.clientId,
@@ -237,17 +264,41 @@ export const useWorkoutsStore = create<WorkoutsState>()(
         });
 
         // 2. ASYNC: Persist to Firebase
-        const workoutRef = doc(db, 'users', user.uid, 'workouts', id);
-        await updateDoc(workoutRef, sanitizeWorkoutForFirebase({
-          ...updates,
-          dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : existingWorkout.dayOfWeek,
+        const firebaseUpdates: any = {
           updatedAt: serverTimestamp(),
           lastMutation: {
             clientId: mutationState.clientId,
             mutationId: mutation.id,
             timestamp: mutation.timestamp
           }
-        }));
+        };
+        
+        // Add all updates, handling undefined values with deleteField()
+        Object.keys(updates).forEach(key => {
+          const value = (updates as any)[key];
+          if (value === undefined) {
+            // Use deleteField() to actually remove the field from Firestore
+            firebaseUpdates[key] = deleteField();
+          } else {
+            firebaseUpdates[key] = value;
+          }
+        });
+        
+        // Handle dayOfWeek for Firebase (when date changes)
+        if (isDayOfWeekBeingUpdated || isDateBeingUpdated) {
+          if (dayOfWeek === undefined) {
+            firebaseUpdates.dayOfWeek = deleteField();
+          } else {
+            firebaseUpdates.dayOfWeek = dayOfWeek;
+          }
+        }
+        
+        console.log('[WorkoutsStore] Firebase updates:', Object.keys(firebaseUpdates).map(k => 
+          `${k}: ${firebaseUpdates[k] === deleteField() ? 'DELETE' : firebaseUpdates[k]}`
+        ).join(', '));
+        
+        const workoutRef = doc(db, 'users', user.uid, 'workouts', id);
+        await updateDoc(workoutRef, firebaseUpdates);
         
         console.log('[WorkoutsStore] Updated workout:', id);
       } catch (error) {
@@ -366,16 +417,10 @@ export const useWorkoutsStore = create<WorkoutsState>()(
           workouts.push({ ...data, id: doc.id });
         });
         
-        // Check if this is our own mutation (prevent echo re-applies)
-        const isOwn = workouts.some(workout => 
-          workout.lastMutation && isOwnMutation(mutationState, workout.lastMutation)
-        );
-        
-        if (!isOwn) {
-          // This is a change from another device or external source
-          console.log('[WorkoutsStore] Real-time update from external source');
-          set({ workouts });
-        }
+        // Always update, but the mutation tracking prevents duplicate processing
+        // The UI will re-render with the server-confirmed data
+        console.log('[WorkoutsStore] Real-time update received:', workouts.length, 'workouts');
+        set({ workouts });
       }, (error) => {
         console.error('[WorkoutsStore] Realtime sync error:', error);
         set({ error: 'Failed to sync with server' });

@@ -262,8 +262,8 @@ export function WorkoutExecutionDialog({
     console.log('[DateChange] Validation passed, updating date');
     setDateString(newDate);
     
-    // Compute dayOfWeek
-    let dayOfWeek = 0;
+    // Compute dayOfWeek - undefined if no date
+    let dayOfWeek: number | undefined = undefined;
     if (newDate) {
       const date = new Date(newDate);
       dayOfWeek = date.getDay();
@@ -272,7 +272,7 @@ export function WorkoutExecutionDialog({
     // Update in store
     updateWorkout(workout.id, {
       date: newDate || undefined,
-      dayOfWeek
+      dayOfWeek: dayOfWeek
     }).catch(error => {
       console.error('Failed to update workout date:', error);
     });
