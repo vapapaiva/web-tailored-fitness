@@ -641,7 +641,7 @@ export function WorkoutExecutionDialog({
             <TabsContent value="text" className="space-y-4">
               <WorkoutExecutionText
                 textEditorValue={textEditorValue}
-                onTextEditorChange={setTextEditorValue}
+                onTextChange={setTextEditorValue}
                 textAreaRef={textAreaRef}
               />
             </TabsContent>

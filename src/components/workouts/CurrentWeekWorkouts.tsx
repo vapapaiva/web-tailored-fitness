@@ -4,31 +4,18 @@
  * Fully integrated with dnd-kit for drag & drop reordering
  */
 
-import { useState, useEffect } from 'react';
-import {
-  DndContext,
-  type DragEndEvent,
-  DragOverlay,
-  type DragStartEvent,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  useDroppable,
-} from '@dnd-kit/core';
+import { useState } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import type { WorkoutDocument } from '@/types/workout';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
-import { useAICoachStore } from '@/stores/aiCoachStore';
 import { WorkoutCardV2 } from './WorkoutCardV2';
 import { WorkoutExecutionDialog } from './WorkoutExecutionDialog';
 import { Card, CardContent } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { getWeekStartDate, formatDayHeader, calculateDateFromDayOfWeek } from '@/lib/dateUtils';
-import { generateRankAtPosition } from '@/lib/lexoRank';
-import { Dumbbell, AlertCircle } from 'lucide-react';
+import { getWeekStartDate, formatDayHeader } from '@/lib/dateUtils';
 
 interface CurrentWeekWorkoutsProps {
   workouts: WorkoutDocument[];
@@ -111,29 +98,9 @@ function DroppableDay({
  * Current week workouts component with drag & drop
  */
 export function CurrentWeekWorkouts({ workouts }: CurrentWeekWorkoutsProps) {
-  const { markAsComplete, markAsIncomplete, updateWorkout } = useWorkoutsStore();
-  const { currentPlan: aiPlan, loadPlan: loadAIPlan } = useAICoachStore();
+  const { markAsComplete, markAsIncomplete } = useWorkoutsStore();
   const [executingWorkout, setExecutingWorkout] = useState<WorkoutDocument | null>(null);
-  const [activeWorkout, setActiveWorkout] = useState<WorkoutDocument | null>(null);
-  const [dndError, setDndError] = useState<string>('');
   const weekStart = getWeekStartDate();
-  
-  // Load AI plan if any workouts are from AI Coach (for DND validation)
-  useEffect(() => {
-    const hasAIWorkouts = workouts.some(w => w.source === 'ai-coach');
-    if (hasAIWorkouts && !aiPlan) {
-      console.log('[CurrentWeek] Loading AI plan for DND validation');
-      loadAIPlan();
-    }
-  }, [workouts, aiPlan, loadAIPlan]);
-  
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  );
 
   if (workouts.length === 0) {
     return (
@@ -171,123 +138,25 @@ export function CurrentWeekWorkouts({ workouts }: CurrentWeekWorkoutsProps) {
     await markAsIncomplete(workout.id);
   };
 
-  const handleDragStart = (event: DragStartEvent) => {
-    const workout = event.active.data.current?.workout as WorkoutDocument;
-    setActiveWorkout(workout);
-  };
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveWorkout(null);
-    setDndError(''); // Clear any previous errors
-
-    if (!over) return;
-
-    const draggedWorkout = active.data.current?.workout as WorkoutDocument;
-    if (!draggedWorkout) return;
-
-    // Determine target day
-    let newDayOfWeek: number;
-    if (over.id.toString().startsWith('day-')) {
-      newDayOfWeek = parseInt(over.id.toString().replace('day-', ''));
-    } else {
-      const targetWorkout = workouts.find(w => w.id === over.id);
-      if (!targetWorkout || targetWorkout.dayOfWeek === undefined) return;
-      newDayOfWeek = targetWorkout.dayOfWeek;
-    }
-
-    // Only update if day actually changed
-    if (draggedWorkout.dayOfWeek !== newDayOfWeek) {
-      // Calculate new date based on new dayOfWeek
-      const newDate = calculateDateFromDayOfWeek(newDayOfWeek, weekStart);
-      
-      // CRITICAL: Validate for AI Coach workouts
-      if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
-        // Check if workout belongs to current microcycle
-        if (draggedWorkout.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
-          const { start, end } = aiPlan.currentMicrocycle.dateRange;
-          
-          // Validate new date is within range
-          if (newDate < start || newDate > end) {
-            console.warn('[DND] Blocked: AI workout date outside microcycle range', {
-              newDate,
-              allowedRange: { start, end }
-            });
-            
-            setDndError(
-              `Cannot move AI Coach workout outside microcycle range (${start} to ${end})`
-            );
-            
-            // Clear error after 5 seconds
-            setTimeout(() => setDndError(''), 5000);
-            return; // Block the move
-          }
-        }
-      }
-      
-      // Generate new rank for target day
-      const targetDayWorkouts = workouts.filter(w => w.dayOfWeek === newDayOfWeek && w.id !== draggedWorkout.id);
-      const existingRanks = targetDayWorkouts.map(w => w.rank).filter(Boolean);
-      const newRank = generateRankAtPosition(existingRanks, targetDayWorkouts.length);
-      
-      // Update workout with new day and date
-      await updateWorkout(draggedWorkout.id, {
-        dayOfWeek: newDayOfWeek,
-        date: newDate,
-        rank: newRank
-      });
-    }
-  };
-
   return (
     <>
-      {/* DND Error Alert */}
-      {dndError && (
-        <Alert variant="destructive" className="mb-3">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{dndError}</AlertDescription>
-        </Alert>
-      )}
-      
-      <DndContext
-        sensors={sensors}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="space-y-3">
-          {DAYS.map((day) => {
-            const dayWorkouts = workoutsByDay.get(day.id) || [];
-            
-            return (
-              <DroppableDay
-                key={day.id}
-                day={day}
-                workouts={dayWorkouts}
-                onStartWorkout={handleStartWorkout}
-                onCompleteWorkout={handleCompleteWorkout}
-                onResetWorkout={handleResetWorkout}
-                weekStart={weekStart}
-              />
-            );
-          })}
-        </div>
-
-        <DragOverlay>
-          {activeWorkout && (
-            <Card className="w-64 shadow-lg rotate-3">
-              <CardContent className="p-3">
-                <div className="flex items-center space-x-2">
-                  <Dumbbell className="h-4 w-4" />
-                  <span className="font-medium text-sm">{activeWorkout.name}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {activeWorkout.exercises.length} exercises
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </DragOverlay>
-      </DndContext>
+      <div className="space-y-3">
+        {DAYS.map((day) => {
+          const dayWorkouts = workoutsByDay.get(day.id) || [];
+          
+          return (
+            <DroppableDay
+              key={day.id}
+              day={day}
+              workouts={dayWorkouts}
+              onStartWorkout={handleStartWorkout}
+              onCompleteWorkout={handleCompleteWorkout}
+              onResetWorkout={handleResetWorkout}
+              weekStart={weekStart}
+            />
+          );
+        })}
+      </div>
 
       {/* Workout Execution Dialog */}
       {executingWorkout && (

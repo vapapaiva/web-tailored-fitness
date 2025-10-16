@@ -46,7 +46,7 @@ export function LaterWorkouts({ workouts }: LaterWorkoutsProps) {
             onStart={handleStartWorkout}
             onComplete={handleCompleteWorkout}
             isEditable={true}
-            isDraggable={false}
+            isDraggable={true}
             showSource={true}
           />
         ))}

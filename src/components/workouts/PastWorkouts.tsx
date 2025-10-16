@@ -46,7 +46,7 @@ export function PastWorkouts({ workouts }: PastWorkoutsProps) {
             onStart={handleStartWorkout}
             onComplete={handleCompleteWorkout}
             isEditable={true}
-            isDraggable={false}
+            isDraggable={true}
             showSource={true}
           />
         ))}

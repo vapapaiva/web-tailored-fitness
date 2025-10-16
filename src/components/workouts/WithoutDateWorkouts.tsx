@@ -46,7 +46,7 @@ export function WithoutDateWorkouts({ workouts }: WithoutDateWorkoutsProps) {
             workout={workout}
             onStart={handleStartWorkout}
             isEditable={true}
-            isDraggable={false}
+            isDraggable={true}
             showSource={true}
           />
         ))}

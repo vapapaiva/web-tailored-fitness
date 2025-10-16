@@ -5,28 +5,47 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import type { WorkoutDocument } from '@/types/workout';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
+import { useAICoachStore } from '@/stores/aiCoachStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { PastWorkouts } from './PastWorkouts';
 import { CurrentWeekWorkouts } from './CurrentWeekWorkouts';
 import { LaterWorkouts } from './LaterWorkouts';
 import { WithoutDateWorkouts } from './WithoutDateWorkouts';
-import { Plus, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Sparkles, Dumbbell, AlertCircle, Calendar } from 'lucide-react';
+import { getWeekStartDate, calculateDateFromDayOfWeek } from '@/lib/dateUtils';
+import { generateRankAtPosition } from '@/lib/lexoRank';
 
 interface PlannedSectionProps {
   onAddWorkout: () => void;
 }
 
 /**
- * Planned section component
+ * Planned section component with universal DND
  */
 export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
   const navigate = useNavigate();
   
   // Subscribe to workouts array to ensure reactivity
   const workouts = useWorkoutsStore(state => state.workouts);
+  const { updateWorkout } = useWorkoutsStore();
+  const { currentPlan: aiPlan } = useAICoachStore();
   const getPastWorkouts = useWorkoutsStore(state => state.getPastWorkouts);
   const getCurrentWeekWorkouts = useWorkoutsStore(state => state.getCurrentWeekWorkouts);
   const getLaterWorkouts = useWorkoutsStore(state => state.getLaterWorkouts);
@@ -35,6 +54,21 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
   const [isPastOpen, setIsPastOpen] = useState(false);
   const [isLaterOpen, setIsLaterOpen] = useState(false);
   const [isWithoutDateOpen, setIsWithoutDateOpen] = useState(false);
+  
+  // DND state
+  const [activeWorkout, setActiveWorkout] = useState<WorkoutDocument | null>(null);
+  const [dndError, setDndError] = useState<string>('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [pendingWorkout, setPendingWorkout] = useState<WorkoutDocument | null>(null);
+  const [pendingDate, setPendingDate] = useState<string>('');
+  
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
   // Recompute on every render (triggered by workouts changes)
   const pastWorkouts = getPastWorkouts();
@@ -47,8 +81,123 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
     currentWeekWorkouts.length > 0 || 
     laterWorkouts.length > 0 || 
     withoutDateWorkouts.length > 0;
+  
+  const weekStart = getWeekStartDate();
+  
+  // DND Handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    const workout = event.active.data.current?.workout as WorkoutDocument;
+    setActiveWorkout(workout);
+    setDndError('');
+  };
+  
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveWorkout(null);
+    
+    if (!over) return;
+    
+    const draggedWorkout = active.data.current?.workout as WorkoutDocument;
+    if (!draggedWorkout) return;
+    
+    const overId = over.id.toString();
+    
+    // Scenario 1: Dropped on a weekday (day-0 through day-6)
+    if (overId.startsWith('day-')) {
+      const targetDayOfWeek = parseInt(overId.replace('day-', ''));
+      const targetDate = calculateDateFromDayOfWeek(targetDayOfWeek, weekStart);
+      
+      // Validate for AI Coach workouts
+      if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
+        if (draggedWorkout.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
+          const { start, end } = aiPlan.currentMicrocycle.dateRange;
+          if (targetDate < start || targetDate > end) {
+            setDndError(`Cannot move AI Coach workout outside microcycle range (${start} to ${end})`);
+            setTimeout(() => setDndError(''), 5000);
+            return;
+          }
+        }
+      }
+      
+      // Update to weekday
+      const targetDayWorkouts = currentWeekWorkouts.filter(w => w.dayOfWeek === targetDayOfWeek && w.id !== draggedWorkout.id);
+      const existingRanks = targetDayWorkouts.map(w => w.rank).filter(Boolean);
+      const newRank = generateRankAtPosition(existingRanks, targetDayWorkouts.length);
+      
+      await updateWorkout(draggedWorkout.id, {
+        date: targetDate,
+        dayOfWeek: targetDayOfWeek,
+        rank: newRank
+      });
+      
+      return;
+    }
+    
+    // Scenario 2: Dropped on subsection (past, later, without-date)
+    if (['past', 'later', 'without-date'].includes(overId)) {
+      // From weekday to subsection - need to ask for specific date
+      setPendingWorkout(draggedWorkout);
+      setPendingDate(draggedWorkout.date || '');
+      setShowDatePicker(true);
+      return;
+    }
+    
+    // Scenario 3: Dropped on another workout (reorder within same section or move to weekday)
+    const targetWorkout = workouts.find(w => w.id === overId);
+    if (targetWorkout && targetWorkout.dayOfWeek !== undefined) {
+      // Target is in current week
+      const targetDate = targetWorkout.date || calculateDateFromDayOfWeek(targetWorkout.dayOfWeek, weekStart);
+      
+      // Validate for AI Coach workouts
+      if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
+        if (draggedWorkout.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
+          const { start, end } = aiPlan.currentMicrocycle.dateRange;
+          if (targetDate < start || targetDate > end) {
+            setDndError(`Cannot move AI Coach workout outside microcycle range (${start} to ${end})`);
+            setTimeout(() => setDndError(''), 5000);
+            return;
+          }
+        }
+      }
+      
+      await updateWorkout(draggedWorkout.id, {
+        date: targetDate,
+        dayOfWeek: targetWorkout.dayOfWeek,
+        rank: targetWorkout.rank // Will be adjusted by lexoRank if needed
+      });
+    }
+  };
+  
+  const handleDatePickerConfirm = async () => {
+    if (!pendingWorkout || !pendingDate) return;
+    
+    const newDayOfWeek = new Date(pendingDate).getDay();
+    
+    await updateWorkout(pendingWorkout.id, {
+      date: pendingDate,
+      dayOfWeek: newDayOfWeek
+    });
+    
+    setShowDatePicker(false);
+    setPendingWorkout(null);
+    setPendingDate('');
+  };
 
   return (
+    <>
+    {/* DND Error Alert */}
+    {dndError && (
+      <Alert variant="destructive" className="mb-3">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>{dndError}</AlertDescription>
+      </Alert>
+    )}
+    
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -159,6 +308,66 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
         )}
       </CardContent>
     </Card>
+    
+    {/* Drag Overlay */}
+    <DragOverlay>
+      {activeWorkout && (
+        <Card className="w-64 shadow-lg rotate-3">
+          <CardContent className="p-3">
+            <div className="flex items-center space-x-2">
+              <Dumbbell className="h-4 w-4" />
+              <span className="font-medium text-sm">{activeWorkout.name}</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {activeWorkout.exercises.length} exercises
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </DragOverlay>
+    </DndContext>
+    
+    {/* Date Picker Dialog */}
+    <Dialog open={showDatePicker} onOpenChange={setShowDatePicker}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Set Workout Date
+          </DialogTitle>
+          <DialogDescription>
+            Choose a specific date for "{pendingWorkout?.name}"
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="workout-date">Date</Label>
+            <Input
+              id="workout-date"
+              type="date"
+              value={pendingDate}
+              onChange={(e) => setPendingDate(e.target.value)}
+              className="w-full"
+            />
+          </div>
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              This workout will be moved to the selected date and appear in the appropriate section.
+            </AlertDescription>
+          </Alert>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowDatePicker(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleDatePickerConfirm} disabled={!pendingDate}>
+            Confirm Date
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
