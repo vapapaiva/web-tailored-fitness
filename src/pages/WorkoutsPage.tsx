@@ -4,12 +4,10 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PlannedSection } from '@/components/workouts/PlannedSection';
-import { DoneSection } from '@/components/workouts/DoneSection';
 import { AddWorkoutDialog } from '@/components/workouts/AddWorkoutDialog';
 import { WorkoutExecutionDialog } from '@/components/workouts/WorkoutExecutionDialog';
 import { Loader2, AlertCircle, Dumbbell } from 'lucide-react';
@@ -18,7 +16,6 @@ import { Loader2, AlertCircle, Dumbbell } from 'lucide-react';
  * Workouts page component
  */
 export function WorkoutsPage() {
-  const navigate = useNavigate();
   const { 
     loadWorkouts, 
     startRealtimeSync, 
@@ -88,9 +85,6 @@ export function WorkoutsPage() {
         <div className="space-y-6">
           {/* Planned Section */}
           <PlannedSection onAddWorkout={() => setShowAddWorkout(true)} />
-
-          {/* Done Section */}
-          <DoneSection />
         </div>
 
         {/* Add Workout Dialog */}

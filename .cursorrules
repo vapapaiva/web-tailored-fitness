@@ -314,64 +314,33 @@ npm run lint         # Run ESLint
 - **Benefits**: Multi-device sync, smooth UX, no data loss, professional collaboration
 - **Usage**: **MANDATORY** for all features that update data or require multi-device support
 
-### 15. Progress Page (2025-10-10)
+### 15. Progress Page (2025-10-16) - **REDESIGNED**
 - **Files**: `src/pages/ProgressPage.tsx`
-- **Description**: Workout history tracking and progress visualization
+- **Description**: Complete workout statistics and completed workouts history
 - **Features**:
-  - **Stats Overview**: Total weeks completed, workouts, exercises
-  - **Workout History Timeline**: Chronological display of all completed weeks
-  - **Week Details**: Each week shows completion date, workouts, weekly reflection
-  - **Empty State**: Helpful message for users with no history
-  - **Loading State**: Spinner while fetching Firebase data
+  - **Statistics Section**: Comprehensive workout stats with charts and graphs (moved from Workouts page)
+    - Overview cards (workouts, exercises, sets, time)
+    - Weekly workout trend (line chart)
+    - Exercise type distribution (pie chart)
+    - Muscle group breakdown (bar chart)
+    - Weekly completion rate (bar chart)
+  - **Completed Workouts List**: Shows all completed workouts with details
+  - **Expandable Stats**: Collapsible statistics section for better organization
+  - **Real-Time Updates**: Syncs with workoutsStore for instant updates
+  - **Empty State**: Helpful message for users with no completed workouts
+  - **Loading State**: Spinner while fetching data
   - **Error Handling**: Graceful error messages
   - **Responsive Design**: Adapts to mobile and desktop
-- **Data Source**: Fetches from Firebase `workoutHistory` collection
-- **Integration**: Automatically displays all completed weeks from workout history service
-- **Future Enhancements**: Charts/graphs, edit/delete workouts, volume trends
+- **Data Source**: Uses workoutsStore for real-time completed workouts data
+- **Integration**: Displays stats and completed workouts from the new workout tracking system
+- **Dependencies**: recharts (for charts and graphs)
+- **Note**: Replaces old workout history system from firebase `workoutHistory` collection
 
-### 16. Gap Recovery Flow (2025-10-09)
-- **Files**: 
-  - `src/pages/GapRecoveryPage.tsx` - Full-page gap recovery experience
-  - `src/hooks/useGapDetection.ts` - Automatic gap detection & navigation
-  - `src/stores/fitnessPlanStore.ts` - `generateGapRecoveryPlan()` function
-  - Updated `src/App.tsx` - Added `/app/gap-recovery` route
-  - Updated `src/pages/FitnessPlanPage.tsx` - Integrated automatic gap detection
-- **Description**: Complete return-to-training flow for users who pause for 7+ days
-- **Features**:
-  - **Automatic Detection & Navigation**: Detects 7+ day training gaps and redirects to full-page gap recovery experience
-  - **Full-Page Experience**: Dedicated page (not popup) for comprehensive gap recovery process
-  - **Gap Context Collection**: Optional text area for describing what happened during gap
-  - **Workout Management**: 
-    - Shows completed workouts from last active week
-    - Add new workouts with name and date
-    - Delete workouts from the list
-    - All workouts sent to AI for context
-  - **Complete Profile Editing**: Full inline profile editor (reused from ProfilePage)
-    - Shows all profile fields organized by sections
-    - Real-time editing with validation
-    - Must save profile changes before generating plan
-  - **Fresh Plan Generation**: Creates new Week 1 plan tailored for return to training
-  - **Auto-Approval**: Gap recovery plans are auto-approved (no draft state)
-  - **Gap Record Persistence**: Saves gap data to Firebase (`trainingGaps` collection)
-  - **Smart Prompt Selection**: Uses Mon-Thu vs Fri-Sun logic for current week generation
-  - **History Context**: Includes up to 6 months of workout history in AI prompt
-- **UX Flow**: 
-  1. User returns after 7+ days → Automatically redirected to `/app/gap-recovery`
-  2. User sees welcome message with last active info and gap duration
-  3. User optionally describes gap activities
-  4. User can add/edit/delete workouts done during gap
-  5. User reviews and edits complete profile (must save changes)
-  6. User clicks "Generate Fresh Plan 🚀"
-  7. AI generates return-to-training plan with appropriate volume
-  8. New Week 1 starts immediately (auto-approved)
-  9. User redirected back to fitness plan page
-- **Component Reuse**: 
-  - Profile editing components reused from ProfilePage (FormField, CollapsibleChoiceField)
-  - Maintains consistency across the app
-- **Firebase Structure**: `users/{userId}/trainingGaps/{gapId}` with startDate, endDate, durationDays, activities, workouts
-- **Dependencies**: date-fns (for "X days ago" formatting)
-- **Integration**: Seamlessly integrated with existing plan generation, profile editing, and routing
-- **Testing**: Use Testing Page "👋 Long Gap State" button to simulate gaps
+### ~~16. Gap Recovery Flow~~ - **REMOVED** (2025-10-16)
+- **Status**: Legacy feature removed along with old fitness plan system
+- **Reason**: Was tied to the old fitness plan architecture (microcycles, week completion)
+- **Files Deleted**: GapRecoveryPage.tsx, useGapDetection.ts, related routes
+- **Note**: May be reimplemented for AI Coach system in the future if needed
 
 ### 17. AI Coach Date Calculation Fix (2025-10-14)
 - **Files**: 
@@ -413,41 +382,35 @@ npm run lint         # Run ESLint
 - **Files**:
   - `src/types/workout.ts` - Workout document types independent from AI plan
   - `src/stores/workoutsStore.ts` - Complete workout management store with real-time sync
-  - `src/pages/WorkoutsPage.tsx` - Main workout tracking page
+  - `src/pages/WorkoutsPage.tsx` - Main workout tracking page (now default route at `/app`)
   - `src/components/workouts/PlannedSection.tsx` - Planned workouts container
   - `src/components/workouts/PastWorkouts.tsx` - Past workouts subsection
   - `src/components/workouts/CurrentWeekWorkouts.tsx` - Current week with drag & drop
   - `src/components/workouts/LaterWorkouts.tsx` - Future workouts subsection
   - `src/components/workouts/WithoutDateWorkouts.tsx` - Workout library
-  - `src/components/workouts/DoneSection.tsx` - Completed workouts section
   - `src/components/workouts/WorkoutStatsDisplay.tsx` - Stats with charts/graphs
   - `src/components/workouts/CompletedWorkoutsList.tsx` - Completed workouts list
   - `src/components/workouts/AddWorkoutDialog.tsx` - Add workout form
   - `src/components/workouts/WorkoutCardV2.tsx` - Enhanced workout card
-  - `src/components/workouts/WorkoutExecutionDialog.tsx` - Workout editing wrapper
+  - `src/components/workouts/WorkoutExecutionDialog.tsx` - Workout editing wrapper with overall progress bar
   - `src/lib/workoutCompletionLogic.ts` - Completion logic utilities
   - Updated `src/lib/dateUtils.ts` - Added week/date checking functions
   - Updated `src/lib/lexoRank.ts` - Fixed stack overflow bug
-  - Updated `src/App.tsx` - Added `/app/workouts` route
-  - Updated `src/components/layout/AppLayout.tsx` - Added Workouts nav item
+  - Updated `src/App.tsx` - Made WorkoutsPage the default route at `/app`
+  - Updated `src/components/layout/AppLayout.tsx` - Updated navigation (Workouts as default)
 - **Description**: Complete standalone workout tracking system decoupled from AI fitness planning
 - **Features**:
   - **Independent Workout Management**: Works completely separately from AI Coach
-  - **Smart Organization**: 4 planned subsections (Past, Current Week, Later, Without Date) + Done section
+  - **Smart Organization**: 4 planned subsections (Past, Current Week, Later, Without Date)
   - **Automatic Categorization**: Workouts auto-sort into sections based on date
   - **Current Week View**: Shows both planned and completed workouts until week passes
   - **Full Drag & Drop**: Reorder workouts within Current Week with dnd-kit
   - **Workout Execution**: Add/edit/delete exercises with UI and text editors
+  - **Overall Progress Bar**: Shows workout completion progress above UI/Text tabs
   - **Date Management**: Edit workout dates, clear dates, auto-recalculate sections
   - **Auto-Completion**: Automatically marks workout as complete when all exercises done
   - **Completion Tracking**: Mark workouts/exercises/sets as complete individually
   - **Source Tracking**: Badges show Manual vs AI Coach origin
-  - **Progress Stats**: Comprehensive statistics with charts and graphs:
-    - Overview cards (workouts, exercises, sets, time)
-    - Weekly workout trend (line chart)
-    - Exercise type distribution (pie chart)
-    - Muscle group breakdown (bar chart)
-    - Weekly completion rate (bar chart)
   - **Real-Time Sync**: Multi-device support with mutation tracking
   - **Smart Filtering**: Completed workouts excluded from planned sections
   - **Collapsible Sections**: Better organization with expandable subsections
@@ -455,12 +418,39 @@ npm run lint         # Run ESLint
 - **Data Structure**: Flat, independent `WorkoutDocument` type (not nested in plans)
 - **Dependencies**: 
   - dnd-kit (drag & drop)
-  - recharts (charts and graphs)
+  - recharts (charts and graphs - moved to Progress page)
   - Existing real-time sync patterns
-- **Architecture**: Follows real-time sync pattern from fitnessPlanStore
-- **Future Integration**: Will connect with AI Coach in Phase B/C
+- **Architecture**: Follows real-time sync pattern
 - **Spec Reference**: `enhanced_complete_app_UX_loop.md`
 - **Implementation Plan**: `ENHANCED_UX_IMPLEMENTATION_PLAN.md`
+
+### 20. Legacy System Removal & App Restructuring (2025-10-16)
+- **Files Removed**:
+  - `src/pages/FitnessPlanPage.tsx` - Old fitness plan page
+  - `src/stores/fitnessPlanStore.ts` - Old fitness plan state management
+  - `src/pages/GapRecoveryPage.tsx` - Gap recovery (tied to old system)
+  - `src/hooks/useGapDetection.ts` - Gap detection hook
+  - `src/components/fitness/FitnessPlanDisplay.tsx` - Old plan display
+  - `src/components/fitness/WeeklyScheduleV2.tsx` - Old weekly schedule
+  - `src/components/fitness/WorkoutCard.tsx` - Old workout card
+  - `src/components/fitness/WorkoutStats.tsx` - Old stats component
+  - `src/components/fitness/WorkoutStatsNew.tsx` - Unused stats
+  - `src/components/fitness/MicrocycleCompletion.tsx` - Old week completion
+  - `src/components/fitness/WeekCompletionButton.tsx` - Old completion button
+  - `src/components/fitness/PlanLoadingSkeleton.tsx` - Old loading skeleton
+  - `src/components/workouts/DoneSection.tsx` - Moved to Progress page
+  - `src/lib/workoutStats.ts` - Old stats utilities
+- **App Structure Changes**:
+  - **Default Route**: Changed from FitnessPlanPage to WorkoutsPage at `/app`
+  - **Navigation**: Removed "Fitness Plan" nav item, "Workouts" is now first
+  - **Progress Page**: Now shows stats and completed workouts (was showing old workout history)
+  - **Workouts Page**: Simplified to show only planned workouts (stats moved to Progress)
+- **Benefits**:
+  - Cleaner codebase without legacy fitness plan code
+  - Clear separation: Workouts = planning, Progress = history & stats
+  - Workouts page is the natural landing page (most actionable)
+  - AI Coach and new Workouts system are independent and intact
+- **Reason**: Old fitness plan system (microcycles, week completion) was superseded by AI Coach + Workouts
 
 ---
 
@@ -496,8 +486,9 @@ npm run lint         # Run ESLint
 - **Local JSON files**: Are examples only - actual config comes from Firebase
 
 ## 🔄 Last Updated
-Complete authentication and profile system implemented on 2025-09-17
-Fitness plan system with no-blinking updates and Firebase sync implemented on 2025-09-17
+Legacy fitness plan system removed and app restructured on 2025-10-16
+Progress page redesigned with stats and completed workouts on 2025-10-16
+Workout execution dialog enhanced with overall progress bar on 2025-10-16
 
 ---
 

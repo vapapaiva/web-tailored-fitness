@@ -1,5 +1,4 @@
 import { useAuthStore } from '@/stores/authStore';
-import { useFitnessPlanStore } from '@/stores/fitnessPlanStore';
 import { useAICoachStore } from '@/stores/aiCoachStore';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
 import { useNavigate } from 'react-router-dom';
@@ -8,14 +7,8 @@ import { remoteConfig, db } from '@/lib/firebase';
 import { doc, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { TestTube, RotateCcw, User, Calendar, History, Brain, Trash2 } from 'lucide-react';
-import { addDays, getTodayISO } from '@/lib/dateUtils';
-import { checkWeekCompletionState } from '@/lib/weekCompletionLogic';
-import { getWorkoutHistory } from '@/lib/workoutHistoryService';
-import { useState } from 'react';
+import { TestTube, RotateCcw, User, Brain, Trash2 } from 'lucide-react';
 
 /**
  * Testing page with development and testing utilities
@@ -23,11 +16,8 @@ import { useState } from 'react';
 export function TestingPage() {
   const navigate = useNavigate();
   const { user, updateProfile } = useAuthStore();
-  const { currentPlan, deletePlan, updatePlan } = useFitnessPlanStore();
   const { currentPlan: aiPlan, loadPlan: loadAIPlan } = useAICoachStore();
   const workoutsStore = useWorkoutsStore();
-  const [historyCount, setHistoryCount] = useState<number | null>(null);
-  const [mockDate, setMockDate] = useState<string>('');
 
   const handleResetOnboarding = async () => {
     if (!user) return;
@@ -86,80 +76,6 @@ export function TestingPage() {
     } catch (error) {
       console.error('Remote Config test failed:', error);
       alert(`Remote Config test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
-
-  const handleResetFitnessPlan = async () => {
-    if (!user) return;
-    
-    try {
-      await deletePlan();
-      alert('Fitness plan deleted!');
-      navigate('/app'); // Redirect to show the generation prompt
-    } catch (error) {
-      console.error('Failed to reset fitness plan:', error);
-      alert('Failed to delete fitness plan');
-    }
-  };
-
-  // Week Completion Button Testing Functions
-  const setWeekDatesByEndOffset = async (endDaysOffset: number) => {
-    if (!currentPlan) {
-      alert('No fitness plan exists. Generate a plan first.');
-      return;
-    }
-
-    const today = getTodayISO();
-    const newEnd = addDays(today, endDaysOffset); // Offset for END date
-    const newStart = addDays(newEnd, -6); // 7-day week (start is 6 days before end)
-
-    const updatedPlan = {
-      ...currentPlan,
-      currentMicrocycle: {
-        ...currentPlan.currentMicrocycle,
-        dateRange: {
-          start: newStart,
-          end: newEnd
-        }
-      }
-    };
-
-    try {
-      await updatePlan(updatedPlan);
-      const state = checkWeekCompletionState(updatedPlan.currentMicrocycle);
-      alert(`Week dates updated!\n\nToday: ${today}\nNew range: ${newStart} to ${newEnd}\nButton state: ${state.state}\n\n${state.message}`);
-    } catch (error) {
-      console.error('Failed to update dates:', error);
-      alert('Failed to update dates');
-    }
-  };
-
-  const handleSetDisabledState = () => setWeekDatesByEndOffset(3); // Week ends in 3 days (future)
-  const handleSetReadyState = () => setWeekDatesByEndOffset(1); // Week ends TODAY
-  const handleSetOverdueState = () => setWeekDatesByEndOffset(-4); // Week ended 4 days ago
-  const handleSetLongGapState = () => setWeekDatesByEndOffset(-14); // Week ended 14 days ago
-
-  // Workout History Testing
-  const handleCheckWorkoutHistory = async () => {
-    if (!user) {
-      alert('No user logged in');
-      return;
-    }
-
-    try {
-      const history = await getWorkoutHistory(user.uid);
-      setHistoryCount(history.length);
-      
-      const historyDetails = history.map(h => 
-        `Week ${h.weekNumber} (${h.dateRange.start} to ${h.dateRange.end}): ${h.completedWorkouts.length} workouts`
-      ).join('\n');
-      
-      alert(`Workout History Retrieved!\n\nTotal weeks: ${history.length}\n\n${historyDetails || 'No history found'}`);
-      
-      console.log('[Testing] Full workout history:', history);
-    } catch (error) {
-      console.error('Failed to retrieve workout history:', error);
-      alert('Failed to retrieve workout history');
     }
   };
 
@@ -223,35 +139,6 @@ export function TestingPage() {
               </Button>
               <p className="text-sm text-muted-foreground">
                 This will mark onboarding as incomplete and redirect you to the onboarding flow.
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Fitness Plan Controls */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <TestTube className="h-5 w-5" />
-                <span>Fitness Plan</span>
-              </CardTitle>
-              <CardDescription>
-                Manage fitness plan data for testing
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button 
-                onClick={handleResetFitnessPlan}
-                variant="destructive"
-                className="w-full"
-                disabled={!currentPlan}
-              >
-                Reset Fitness Plan
-              </Button>
-              <p className="text-sm text-muted-foreground">
-                {currentPlan 
-                  ? `Current plan: ${currentPlan.name} (${currentPlan.status})`
-                  : 'No fitness plan exists'
-                }
               </p>
             </CardContent>
           </Card>
@@ -373,97 +260,6 @@ export function TestingPage() {
             </CardContent>
           </Card>
 
-          {/* Week Completion Button Testing */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Calendar className="h-5 w-5" />
-                <span>Week Completion Testing</span>
-              </CardTitle>
-              <CardDescription>
-                Test week completion button states by manipulating microcycle dates
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="mock-date">Set Current Date (for testing)</Label>
-                <Input
-                  id="mock-date"
-                  type="date"
-                  value={mockDate}
-                  onChange={(e) => setMockDate(e.target.value)}
-                  placeholder="Leave empty for actual today"
-                />
-                <p className="text-xs text-muted-foreground">
-                  This doesn't actually change dates, but you can use it to test what dates to set
-                </p>
-              </div>
-              
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Quick Test Scenarios:</p>
-                <Button 
-                  onClick={async () => {
-                    if (!user || !aiPlan?.currentMicrocycle) return;
-                    const today = new Date().toISOString().split('T')[0];
-                    const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
-                    await updateDoc(planRef, {
-                      'currentMicrocycle.dateRange.end': today,
-                      updatedAt: serverTimestamp()
-                    });
-                    await loadAIPlan();
-                    alert('Set week end to TODAY (button should be Ready)');
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  disabled={!aiPlan?.currentMicrocycle}
-                >
-                  📅 Week Ends TODAY
-                </Button>
-                
-                <Button 
-                  onClick={async () => {
-                    if (!user || !aiPlan?.currentMicrocycle) return;
-                    const yesterday = addDays(new Date().toISOString().split('T')[0], -1);
-                    const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
-                    await updateDoc(planRef, {
-                      'currentMicrocycle.dateRange.end': yesterday,
-                      updatedAt: serverTimestamp()
-                    });
-                    await loadAIPlan();
-                    alert('Set week end to YESTERDAY (button should be Overdue)');
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  disabled={!aiPlan?.currentMicrocycle}
-                >
-                  ⚠️ Week Ended YESTERDAY
-                </Button>
-                
-                <Button 
-                  onClick={async () => {
-                    if (!user || !aiPlan?.currentMicrocycle) return;
-                    const nextWeek = addDays(new Date().toISOString().split('T')[0], 7);
-                    const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
-                    await updateDoc(planRef, {
-                      'currentMicrocycle.dateRange.end': nextWeek,
-                      updatedAt: serverTimestamp()
-                    });
-                    await loadAIPlan();
-                    alert('Set week end to NEXT WEEK (button should be Disabled)');
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  disabled={!aiPlan?.currentMicrocycle}
-                >
-                  ⏸️ Week Still ONGOING
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Profile Controls */}
           <Card>
             <CardHeader>
@@ -496,111 +292,6 @@ export function TestingPage() {
             </CardContent>
           </Card>
 
-          {/* Workout History Testing */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <History className="h-5 w-5" />
-                <span>Workout History</span>
-              </CardTitle>
-              <CardDescription>
-                Test workout history persistence and retrieval
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button 
-                onClick={handleCheckWorkoutHistory}
-                variant="default"
-                className="w-full"
-              >
-                Check Workout History
-              </Button>
-              {historyCount !== null && (
-                <div className="text-sm bg-blue-50 dark:bg-blue-950 p-4 rounded-md">
-                  <p><strong>History Count:</strong> {historyCount} week(s)</p>
-                  <p className="text-muted-foreground mt-1">
-                    Complete a week to add to history. Check console for full details.
-                  </p>
-                </div>
-              )}
-              <p className="text-sm text-muted-foreground">
-                This will retrieve all saved workout history from Firebase. History is automatically saved when you complete a week.
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Week Completion Button Testing */}
-          <Card className="md:col-span-2 lg:col-span-3">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Calendar className="h-5 w-5" />
-                <span>Week Completion Button States</span>
-              </CardTitle>
-              <CardDescription>
-                Test different button states by adjusting the current week's date range
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                <Button 
-                  onClick={handleSetDisabledState}
-                  variant="outline"
-                  className="w-full"
-                  disabled={!currentPlan}
-                >
-                  🔒 Disabled State
-                </Button>
-                <Button 
-                  onClick={handleSetReadyState}
-                  variant="outline"
-                  className="w-full bg-green-50 dark:bg-green-950 hover:bg-green-100"
-                  disabled={!currentPlan}
-                >
-                  ✅ Ready State
-                </Button>
-                <Button 
-                  onClick={handleSetOverdueState}
-                  variant="outline"
-                  className="w-full bg-orange-50 dark:bg-orange-950 hover:bg-orange-100"
-                  disabled={!currentPlan}
-                >
-                  ⚠️ Overdue State
-                </Button>
-                <Button 
-                  onClick={handleSetLongGapState}
-                  variant="outline"
-                  className="w-full bg-red-50 dark:bg-red-950 hover:bg-red-100"
-                  disabled={!currentPlan}
-                >
-                  👋 Long Gap State
-                </Button>
-              </div>
-              <div className="text-sm space-y-2 bg-muted p-4 rounded-md">
-                <p><strong>Disabled:</strong> Week ends in 3 days (button gray, not clickable)</p>
-                <p><strong>Ready:</strong> Week ends today (button green with pulse)</p>
-                <p><strong>Overdue:</strong> Week ended 4 days ago (button orange warning)</p>
-                <p><strong>Long Gap:</strong> Week ended 14 days ago (button hidden, triggers gap recovery)</p>
-                <p className="text-muted-foreground italic mt-2">
-                  After clicking, navigate to Fitness Plan page to see the button in action!
-                </p>
-              </div>
-              <div className="text-sm bg-orange-50 dark:bg-orange-950 border border-orange-500 dark:border-orange-400 p-4 rounded-md">
-                <p className="font-semibold text-orange-900 dark:text-orange-300">⚠️ Warning: Testing Buttons Override Dates</p>
-                <p className="text-orange-800 dark:text-orange-400 mt-1">
-                  These buttons will overwrite your current week's date range. Use ONLY for testing button states on the first week. 
-                  Once you're progressing through weeks naturally (Week 2, 3, etc.), do NOT use these buttons as they will disrupt your progression.
-                </p>
-              </div>
-              {currentPlan && currentPlan.currentMicrocycle.dateRange && (
-                <div className="text-sm bg-blue-50 dark:bg-blue-950 p-4 rounded-md">
-                  <p><strong>Current Week Range:</strong></p>
-                  <p className="font-mono">{currentPlan.currentMicrocycle.dateRange.start} to {currentPlan.currentMicrocycle.dateRange.end}</p>
-                  <p className="mt-2"><strong>Current Button State:</strong></p>
-                  <p>{checkWeekCompletionState(currentPlan.currentMicrocycle).state} - {checkWeekCompletionState(currentPlan.currentMicrocycle).message}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
 
         <Separator />
@@ -642,12 +333,6 @@ export function TestingPage() {
                   <span className="font-medium">Profile Fields:</span>
                   <p className="text-muted-foreground">
                     {user?.profile ? Object.keys(user.profile).length : 0} fields
-                  </p>
-                </div>
-                <div>
-                  <span className="font-medium">Fitness Plan:</span>
-                  <p className="text-muted-foreground">
-                    {currentPlan ? `${currentPlan.status} - ${currentPlan.currentMicrocycle.workouts.length} workouts` : 'Not generated'}
                   </p>
                 </div>
               </div>

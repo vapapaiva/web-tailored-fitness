@@ -30,6 +30,7 @@ import type {
 import type { WorkoutDocument } from '@/types/workout';
 import { sanitizeWorkoutForFirebase } from '@/lib/firebaseUtils';
 import { calculateInitialWeekRange, calculateDateInRange } from '@/lib/dateUtils';
+import { normalizeExercises } from '@/lib/workoutNormalization';
 
 interface AICoachState {
   currentPlan: AIPlan | null;
@@ -553,11 +554,15 @@ export const useAICoachStore = create<AICoachState>()(
           console.log(`[AICoach] Creating workout: dayOfWeek=${dayOfWeek}, calculated date=${date}, name=${workoutData.name}`);
           console.log(`[AICoach] Validation: ${new Date(date).getDay()} should equal ${dayOfWeek}`);
           
-          // Store original AI suggestion for preservation
-          const originalExercises = JSON.parse(JSON.stringify(workoutData.exercises)); // Deep copy
+          // Normalize exercises to ensure volumeType is correctly set
+          const normalizedExercises = normalizeExercises(workoutData.exercises || []);
+          
+          // Store normalized AI suggestion for preservation
+          const originalExercises = JSON.parse(JSON.stringify(normalizedExercises)); // Deep copy
           
           const workoutId = await workoutsStore.addWorkout({
             ...workoutData,
+            exercises: normalizedExercises, // Use normalized exercises
             dayOfWeek, // Use normalized dayOfWeek
             date,
             source: 'ai-coach',

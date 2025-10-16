@@ -17,12 +17,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { CheckCircle, RotateCcw, Trash2, X, Calendar, Info, Sparkles, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { WorkoutExecutionUI } from '@/components/fitness/WorkoutExecutionUI';
 import { WorkoutExecutionText } from '@/components/fitness/WorkoutExecutionText';
 import { useWorkoutExecution } from '@/hooks/useWorkoutExecution';
 import { useTextSync } from '@/hooks/useTextSync';
 import { useInputManagement } from '@/hooks/useInputManagement';
 import { updateVolumeRow, addVolumeRow, removeVolumeRow, type VolumeRow } from '@/lib/volumeRowUtils';
+import { normalizeForComparison } from '@/lib/workoutNormalization';
 import type { Exercise } from '@/types/fitness';
 
 interface WorkoutExecutionDialogProps {
@@ -167,30 +169,23 @@ export function WorkoutExecutionDialog({
     let hasManualChanges = latestWorkoutFromStore.hasManualChanges || false;
     if (latestWorkoutFromStore.source === 'ai-coach' && latestWorkoutFromStore.originalAISuggestion) {
       // Compare current exercises with original AI suggestion
-      // Note: We ignore completion status and volumeRowIds in comparison
-      const currentExercisesNormalized = JSON.stringify(
-        updatedWorkout.exercises.map(ex => ({
-          ...ex,
-          sets: ex.sets.map(set => ({
-            ...set,
-            completed: undefined,
-            volumeRowId: undefined
-          }))
-        }))
+      // Use normalization function that only compares workout structure, not completion/UI state
+      const currentNormalized = JSON.stringify(
+        normalizeForComparison(updatedWorkout.exercises)
       );
       
-      const originalExercisesNormalized = JSON.stringify(
-        latestWorkoutFromStore.originalAISuggestion.exercises.map(ex => ({
-          ...ex,
-          sets: ex.sets.map(set => ({
-            ...set,
-            completed: undefined,
-            volumeRowId: undefined
-          }))
-        }))
+      const originalNormalized = JSON.stringify(
+        normalizeForComparison(latestWorkoutFromStore.originalAISuggestion.exercises)
       );
       
-      hasManualChanges = currentExercisesNormalized !== originalExercisesNormalized;
+      hasManualChanges = currentNormalized !== originalNormalized;
+      
+      // Debug logging
+      if (hasManualChanges) {
+        console.log('[WorkoutExecution] Manual changes detected:');
+        console.log('Current:', currentNormalized);
+        console.log('Original:', originalNormalized);
+      }
     }
     
     // Update in store (async, silent)
@@ -612,6 +607,21 @@ export function WorkoutExecutionDialog({
               <TabsTrigger value="ui">UI Editor</TabsTrigger>
               <TabsTrigger value="text">Text Editor</TabsTrigger>
             </TabsList>
+
+            {/* Overall Workout Progress Bar */}
+            <div className="pt-4 pb-2 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Overall Progress</span>
+                <span className="font-medium">
+                  {overallProgress.completedCount}/{overallProgress.totalCount} sets
+                  {overallProgress.isWorkoutComplete && " ✓"}
+                </span>
+              </div>
+              <Progress 
+                value={overallProgress.totalCount > 0 ? (overallProgress.completedCount / overallProgress.totalCount) * 100 : 0} 
+                className="h-2"
+              />
+            </div>
 
             <TabsContent value="ui" className="space-y-4">
               <WorkoutExecutionUI

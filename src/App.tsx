@@ -12,11 +12,9 @@ import { AppLayout } from '@/components/layout/AppLayout';
 // Pages
 import { WorkoutsPage } from '@/pages/WorkoutsPage';
 import { AICoachPage } from '@/pages/AICoachPage';
-import { FitnessPlanPage } from '@/pages/FitnessPlanPage';
 import { ProgressPage } from '@/pages/ProgressPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { TestingPage } from '@/pages/TestingPage';
-import { GapRecoveryPage } from '@/pages/GapRecoveryPage';
 
 /**
  * Main App component with routing and authentication logic
@@ -99,13 +97,11 @@ function App() {
             )
           }
         >
-          <Route index element={<FitnessPlanPage />} />
-          <Route path="workouts" element={<WorkoutsPage />} />
+          <Route index element={<WorkoutsPage />} />
           <Route path="ai-coach" element={<AICoachPage />} />
           <Route path="progress" element={<ProgressPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="testing" element={<TestingPage />} />
-          <Route path="gap-recovery" element={<GapRecoveryPage />} />
         </Route>
         
         {/* Catch all route */}
