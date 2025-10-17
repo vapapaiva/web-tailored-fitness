@@ -550,13 +550,18 @@ export function WorkoutExecutionDialog({
                 variant="destructive" 
                 size="sm" 
                 onClick={handleDeleteWorkout}
-                disabled={latestWorkoutFromStore.source === 'ai-coach'}
+                disabled={latestWorkoutFromStore.source === 'ai-coach' && !!latestWorkoutFromStore.aiCoachContext}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
-              {latestWorkoutFromStore.source === 'ai-coach' && (
+              {latestWorkoutFromStore.source === 'ai-coach' && latestWorkoutFromStore.aiCoachContext && (
                 <p className="text-xs text-muted-foreground">
                   AI workouts can't be deleted
+                </p>
+              )}
+              {latestWorkoutFromStore.source === 'ai-coach' && !latestWorkoutFromStore.aiCoachContext && (
+                <p className="text-xs text-muted-foreground text-green-600 dark:text-green-400">
+                  Detached from plan
                 </p>
               )}
             </div>

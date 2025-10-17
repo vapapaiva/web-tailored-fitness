@@ -189,17 +189,22 @@ export function TestingPage() {
                       let preservedCount = 0;
                       
                       for (const workout of microcycleWorkouts) {
-                        // Check if workout has any progress (any completed sets)
-                        const hasAnyProgress = workout.exercises.some(ex =>
-                          ex.sets.some(set => set.completed === true)
-                        );
+                        // Check if user has made any progress (same logic as regenerateMicrocycle)
+                        const hasProgress = 
+                          workout.exercises.some(ex => ex.sets.some(set => set.completed === true)) ||
+                          workout.hasManualChanges === true ||
+                          workout.status === 'completed';
                         
-                        // Delete only if: no progress AND status is planned
-                        if (!hasAnyProgress && workout.status === 'planned') {
+                        if (hasProgress) {
+                          // PRESERVE: Detach from microcycle but keep the workout
+                          await workoutsStore.updateWorkout(workout.id, {
+                            aiCoachContext: undefined // Remove microcycle association
+                          });
+                          preservedCount++;
+                        } else {
+                          // DELETE: User hasn't touched this workout
                           await workoutsStore.deleteWorkout(workout.id);
                           deletedCount++;
-                        } else {
-                          preservedCount++;
                         }
                       }
                       
@@ -215,7 +220,7 @@ export function TestingPage() {
                       alert(
                         `AI Coach microcycle cleared!\n\n` +
                         `✅ Deleted: ${deletedCount} untouched workout(s)\n` +
-                        `💪 Preserved: ${preservedCount} workout(s) with progress\n` +
+                        `💪 Preserved: ${preservedCount} workout(s) with progress (now deletable)\n` +
                         `Goals preserved.`
                       );
                     } catch (error) {

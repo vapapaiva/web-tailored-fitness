@@ -653,10 +653,48 @@ export const useAICoachStore = create<AICoachState>()(
       if (!user || !currentPlan || !currentPlan.currentMicrocycle) return;
 
       try {
-        // Delete old workouts
+        set({ generating: true });
+        
+        // Smart deletion: Preserve workouts that user has started
+        let deletedCount = 0;
+        let preservedCount = 0;
+        
         for (const workoutId of currentPlan.currentMicrocycle.workoutIds) {
-          await workoutsStore.deleteWorkout(workoutId);
+          const workout = workoutsStore.workouts.find(w => w.id === workoutId);
+          if (!workout) {
+            console.log(`[AICoach] Workout ${workoutId} not found in store, skipping`);
+            continue;
+          }
+          
+          // Check if user has made any progress on this workout
+          const hasProgress = 
+            // User marked at least one set as complete
+            workout.exercises.some(ex => ex.sets.some(set => set.completed === true)) ||
+            // User manually changed the workout structure
+            workout.hasManualChanges === true ||
+            // Workout is already completed
+            workout.status === 'completed';
+          
+          if (hasProgress) {
+            // PRESERVE: Detach from microcycle but keep the workout
+            console.log(`[AICoach] Preserving workout "${workout.name}" - user has made progress`);
+            
+            // Update workout to remove AI Coach context (no longer locked to this microcycle)
+            // User can now delete it manually if they want
+            await workoutsStore.updateWorkout(workoutId, {
+              aiCoachContext: undefined // Remove microcycle association
+            });
+            
+            preservedCount++;
+          } else {
+            // DELETE: User hasn't touched this workout, safe to delete
+            console.log(`[AICoach] Deleting untouched workout "${workout.name}"`);
+            await workoutsStore.deleteWorkout(workoutId);
+            deletedCount++;
+          }
         }
+        
+        console.log(`[AICoach] Regeneration cleanup: ${deletedCount} deleted, ${preservedCount} preserved`);
 
         // Get user profile
         const profileDoc = await getDoc(doc(db, 'users', user.uid, 'profile', 'data'));
