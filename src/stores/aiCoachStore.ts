@@ -742,6 +742,7 @@ export const useAICoachStore = create<AICoachState>()(
         const updatedPlan: AIPlan = {
           ...currentPlan,
           currentMicrocycle: undefined,
+          status: 'goals-approved', // CRITICAL: Reset to goals-approved so next week can be generated
           completedMicrocycles: [
             ...currentPlan.completedMicrocycles,
             completedMicrocycle
@@ -751,12 +752,13 @@ export const useAICoachStore = create<AICoachState>()(
         const planDocRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
         await updateDoc(planDocRef, {
           currentMicrocycle: null,
+          status: 'goals-approved', // Reset status for next week generation
           completedMicrocycles: updatedPlan.completedMicrocycles,
           updatedAt: serverTimestamp(),
         });
 
         set({ currentPlan: updatedPlan });
-        console.log('[AICoach] Microcycle marked as complete');
+        console.log('[AICoach] Microcycle marked as complete, ready for next week generation');
 
       } catch (error) {
         console.error('[AICoach] Complete microcycle error:', error);
@@ -765,7 +767,7 @@ export const useAICoachStore = create<AICoachState>()(
     },
 
     generateNextMicrocycle: async (reflection: string) => {
-      const { currentPlan, completeMicrocycle } = get();
+      const { currentPlan } = get();
       const authStore = useAuthStore.getState();
       const { user } = authStore;
       const workoutsStore = useWorkoutsStore.getState();
@@ -773,49 +775,79 @@ export const useAICoachStore = create<AICoachState>()(
       if (!user || !currentPlan || !currentPlan.currentMicrocycle) return;
 
       try {
-        // First, complete current microcycle
-        await completeMicrocycle(reflection);
+        set({ generating: true });
+        
+        // Save current microcycle data BEFORE clearing it
+        const currentMicrocycleData = currentPlan.currentMicrocycle;
+        
+        // Get completed workouts from current week
+        const completedWorkouts = workoutsStore.workouts.filter(w => 
+          currentMicrocycleData.workoutIds.includes(w.id) && 
+          w.status === 'completed'
+        );
+
+        // Create completed microcycle record
+        const completedMicrocycle = {
+          id: currentMicrocycleData.id,
+          week: currentMicrocycleData.week,
+          completedAt: new Date().toISOString(),
+          workoutIds: currentMicrocycleData.workoutIds,
+          weeklyReflection: reflection
+        };
 
         // Get user profile
         const profileDoc = await getDoc(doc(db, 'users', user.uid, 'profile', 'data'));
         const userProfile = profileDoc.exists() ? profileDoc.data() : {};
 
-        // Get completed workouts from current week
-        const completedWorkouts = workoutsStore.workouts.filter(w => 
-          currentPlan.currentMicrocycle?.workoutIds.includes(w.id) && 
-          w.status === 'completed'
-        );
-
         // Calculate next week date range
         const today = new Date();
         const nextWeekRange = calculateInitialWeekRange(today);
 
-        // Generate next week
+        // Generate next microcycle
         const request: MicrocycleGenerationRequest = {
           userProfile,
           macrocycleGoal: currentPlan.macrocycleGoal,
           mesocycleMilestones: currentPlan.mesocycleMilestones,
           currentDate: today.toISOString(),
-          weekNumber: currentPlan.currentMicrocycle.week + 1,
+          weekNumber: currentMicrocycleData.week + 1,
           weekDateRange: nextWeekRange,
           previousMicrocycle: {
             planned: {
-              week: currentPlan.currentMicrocycle.week,
-              focus: currentPlan.currentMicrocycle.focus,
-              dateRange: currentPlan.currentMicrocycle.dateRange,
-              workouts: [] // Simplified
+              week: currentMicrocycleData.week,
+              focus: currentMicrocycleData.focus,
+              dateRange: currentMicrocycleData.dateRange,
+              workouts: []
             },
             actual: {
               completedWorkouts,
               weeklyReflection: reflection,
-              completionRate: completedWorkouts.length / currentPlan.currentMicrocycle.workoutIds.length * 100
+              completionRate: completedWorkouts.length / currentMicrocycleData.workoutIds.length * 100
             }
           }
         };
 
+        // Generate new microcycle (this will set currentMicrocycle to new week)
         await get().generateMicrocycle(request);
+        
+        // AFTER successful generation, save the completion record
+        const planDocRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
+        await updateDoc(planDocRef, {
+          completedMicrocycles: [...currentPlan.completedMicrocycles, completedMicrocycle],
+          updatedAt: serverTimestamp(),
+        });
+        
+        // Update local state
+        const { currentPlan: updatedPlan } = get();
+        if (updatedPlan) {
+          set({ 
+            currentPlan: {
+              ...updatedPlan,
+              completedMicrocycles: [...currentPlan.completedMicrocycles, completedMicrocycle]
+            }
+          });
+        }
 
-        console.log('[AICoach] Next microcycle generated');
+        console.log('[AICoach] Next microcycle generated and previous microcycle archived');
 
       } catch (error) {
         console.error('[AICoach] Generate next microcycle error:', error);

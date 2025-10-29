@@ -286,6 +286,28 @@ export function formatFullDate(dateStr: string): string {
 }
 
 /**
+ * Format microcycle date range for display
+ * @param start - Start date (YYYY-MM-DD)
+ * @param end - End date (YYYY-MM-DD)
+ * @returns Formatted string like "Oct 16 - 19" or "Oct 29 - Nov 4"
+ */
+export function formatMicrocycleDateRange(start: string, end: string): string {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  
+  const startMonth = startDate.toLocaleDateString('en-US', { month: 'short' });
+  const endMonth = endDate.toLocaleDateString('en-US', { month: 'short' });
+  const startDay = startDate.getDate();
+  const endDay = endDate.getDate();
+  
+  if (startMonth === endMonth) {
+    return `${startMonth} ${startDay} - ${endDay}`;
+  } else {
+    return `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
+  }
+}
+
+/**
  * Check if a date is in the current week (Monday-Sunday)
  * @param dateStr - ISO date string or Date object
  * @returns true if the date is in the current week

@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, Loader2, Sparkles } from 'lucide-react';
+import { formatMicrocycleDateRange } from '@/lib/dateUtils';
 
 interface WeekCompletionDialogProps {
   plan: AIPlan;
@@ -69,10 +70,10 @@ export function WeekCompletionDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            Complete Week {plan.currentMicrocycle.week}
+            Complete Microcycle ({formatMicrocycleDateRange(plan.currentMicrocycle.dateRange.start, plan.currentMicrocycle.dateRange.end)})
           </DialogTitle>
           <DialogDescription>
-            Reflect on your progress and generate next week's workouts
+            Reflect on your progress and generate your next microcycle
           </DialogDescription>
         </DialogHeader>
 
@@ -141,9 +142,9 @@ export function WeekCompletionDialog({
           <div className="py-12 text-center space-y-4">
             <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
             <div>
-              <h3 className="text-lg font-semibold">Generating Next Week</h3>
+              <h3 className="text-lg font-semibold">Generating Next Microcycle</h3>
               <p className="text-sm text-muted-foreground mt-2">
-                AI is creating workouts for Week {plan.currentMicrocycle.week + 1}...
+                AI is creating your personalized workouts...
               </p>
             </div>
           </div>
@@ -156,7 +157,7 @@ export function WeekCompletionDialog({
             </Button>
             <Button onClick={handleGenerateNext} disabled={generating}>
               <Sparkles className="h-4 w-4 mr-2" />
-              Generate Week {plan.currentMicrocycle.week + 1}
+              Generate Next Microcycle
             </Button>
           </DialogFooter>
         )}

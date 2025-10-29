@@ -105,8 +105,8 @@ export function CurrentMicrocycleCard({ plan, workouts }: CurrentMicrocycleCardP
               <CardTitle className="flex items-center space-x-2">
                 <Calendar className="h-5 w-5" />
                 <span>
-                  {formatWeekHeader(
-                    plan.currentMicrocycle.week,
+                  Current Microcycle: {formatWeekHeader(
+                    0, // Week number not used
                     plan.currentMicrocycle.dateRange,
                     plan.currentMicrocycle.focus
                   )}

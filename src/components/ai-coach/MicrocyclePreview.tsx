@@ -18,6 +18,7 @@ import {
   Calendar,
   Dumbbell
 } from 'lucide-react';
+import { formatMicrocycleDateRange } from '@/lib/dateUtils';
 import { formatWeekHeader, getWeekStartDate } from '@/lib/dateUtils';
 
 interface MicrocyclePreviewProps {
@@ -78,7 +79,9 @@ export function MicrocyclePreview({ plan, onApprove }: MicrocyclePreviewProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Review Week {plan.currentMicrocycle.week}</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Review Microcycle ({formatMicrocycleDateRange(plan.currentMicrocycle.dateRange.start, plan.currentMicrocycle.dateRange.end)})
+          </h1>
           <p className="text-muted-foreground mt-1">
             {plan.currentMicrocycle.focus}
           </p>
@@ -187,7 +190,7 @@ export function MicrocyclePreview({ plan, onApprove }: MicrocyclePreviewProps) {
           disabled={generating}
         >
           <CheckCircle className="h-4 w-4 mr-2" />
-          Approve & Start Week 1
+          Approve & Start Microcycle
         </Button>
       </div>
 

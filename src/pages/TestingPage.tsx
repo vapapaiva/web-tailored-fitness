@@ -160,12 +160,49 @@ export function TestingPage() {
                   onClick={async () => {
                     if (!user) return;
                     try {
+                      // Smart deletion: Handle workouts first
+                      let deletedCount = 0;
+                      let preservedCount = 0;
+                      
+                      if (aiPlan?.currentMicrocycle) {
+                        const microcycleWorkouts = workoutsStore.workouts.filter(w => 
+                          aiPlan.currentMicrocycle?.workoutIds.includes(w.id)
+                        );
+                        
+                        for (const workout of microcycleWorkouts) {
+                          // Check if user has made any progress
+                          const hasProgress = 
+                            workout.exercises.some(ex => ex.sets.some(set => set.completed === true)) ||
+                            workout.hasManualChanges === true ||
+                            workout.status === 'completed';
+                          
+                          if (hasProgress) {
+                            // PRESERVE: Detach from microcycle but keep the workout
+                            await workoutsStore.updateWorkout(workout.id, {
+                              aiCoachContext: undefined // Remove microcycle association
+                            });
+                            preservedCount++;
+                          } else {
+                            // DELETE: User hasn't touched this workout
+                            await workoutsStore.deleteWorkout(workout.id);
+                            deletedCount++;
+                          }
+                        }
+                      }
+                      
+                      // Delete the AI plan document
                       const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
                       await deleteDoc(planRef);
                       await loadAIPlan();
-                      alert('AI Coach plan deleted!');
+                      
+                      alert(
+                        `AI Coach plan deleted!\n\n` +
+                        `✅ Deleted: ${deletedCount} untouched workout(s)\n` +
+                        `💪 Preserved: ${preservedCount} workout(s) with progress (now deletable manually)`
+                      );
                     } catch (error) {
                       console.error('Failed to delete AI plan:', error);
+                      alert('Failed to delete AI plan');
                     }
                   }}
                   variant="destructive"
@@ -239,6 +276,60 @@ export function TestingPage() {
                   onClick={async () => {
                     if (!user) return;
                     try {
+                      // Smart cleanup: Delete AI workouts without progress, detach those with progress
+                      const aiWorkouts = workoutsStore.workouts.filter(w => w.source === 'ai-coach');
+                      
+                      let deletedCount = 0;
+                      let preservedCount = 0;
+                      let alreadyDetachedCount = 0;
+                      
+                      for (const workout of aiWorkouts) {
+                        // Check if user has made any progress
+                        const hasProgress = 
+                          workout.exercises.some(ex => ex.sets.some(set => set.completed === true)) ||
+                          workout.hasManualChanges === true ||
+                          workout.status === 'completed';
+                        
+                        if (hasProgress) {
+                          // Check if already detached
+                          if (!workout.aiCoachContext) {
+                            alreadyDetachedCount++;
+                          } else {
+                            // PRESERVE: Detach from microcycle but keep the workout
+                            await workoutsStore.updateWorkout(workout.id, {
+                              aiCoachContext: undefined
+                            });
+                            preservedCount++;
+                          }
+                        } else {
+                          // DELETE: User hasn't touched this workout
+                          await workoutsStore.deleteWorkout(workout.id);
+                          deletedCount++;
+                        }
+                      }
+                      
+                      alert(
+                        `Smart AI Workouts Cleanup Complete!\n\n` +
+                        `✅ Deleted: ${deletedCount} untouched workout(s)\n` +
+                        `💪 Detached: ${preservedCount} workout(s) with progress\n` +
+                        `ℹ️ Already detached: ${alreadyDetachedCount} workout(s)`
+                      );
+                    } catch (error) {
+                      console.error('Failed to cleanup AI workouts:', error);
+                      alert('Failed to cleanup AI workouts');
+                    }
+                  }}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Smart Cleanup AI Workouts
+                </Button>
+                
+                <Button 
+                  onClick={async () => {
+                    if (!user) return;
+                    if (!confirm('This will DELETE ALL AI workouts, even those with progress. Are you sure?')) return;
+                    try {
                       // Delete all AI-generated workouts (keep manual ones)
                       const aiWorkouts = workoutsStore.workouts.filter(w => w.source === 'ai-coach');
                       for (const workout of aiWorkouts) {
@@ -249,10 +340,11 @@ export function TestingPage() {
                       console.error('Failed to delete AI workouts:', error);
                     }
                   }}
-                  variant="outline"
+                  variant="destructive"
                   className="w-full"
+                  size="sm"
                 >
-                  Delete All AI Workouts
+                  Force Delete ALL AI Workouts
                 </Button>
               </div>
               

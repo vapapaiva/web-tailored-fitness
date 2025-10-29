@@ -40,3 +40,4 @@ vercel deploy
 
 The function will be available at `https://your-app.vercel.app/api/openai`
 
+

@@ -188,10 +188,10 @@ export function MicrocycleGenerationFlow() {
             <CardHeader className="text-center">
               <CardTitle className="flex items-center justify-center space-x-2">
                 <Dumbbell className="h-5 w-5" />
-                <span>Generate Your First Week</span>
+                <span>Generate Your First Microcycle</span>
               </CardTitle>
               <CardDescription>
-                AI will create personalized workouts for Week 1 based on your goals
+                AI will create personalized workouts for your first training week based on your goals
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -202,7 +202,7 @@ export function MicrocycleGenerationFlow() {
                   disabled={generating}
                 >
                   <Sparkles className="h-4 w-4 mr-2" />
-                  Generate Week 1 Workouts
+                  Generate First Microcycle
                 </Button>
               </div>
             </CardContent>
@@ -223,7 +223,7 @@ export function MicrocycleGenerationFlow() {
               <div>
                 <h3 className="text-lg font-semibold">Generating Your Workouts</h3>
                 <p className="text-sm text-muted-foreground mt-2">
-                  AI is creating personalized workouts for Week 1...
+                  AI is creating your personalized first microcycle...
                 </p>
               </div>
             </div>

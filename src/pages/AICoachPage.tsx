@@ -44,6 +44,16 @@ export function AICoachPage() {
     };
   }, [loadPlan, startRealtimeSync, stopRealtimeSync, loadWorkouts, startWorkoutsSync, stopWorkoutsSync]);
 
+  // Debug logging
+  console.log('[AICoach Page] Current state:', {
+    hasPlan: !!currentPlan,
+    status: currentPlan?.status,
+    hasMicrocycle: !!currentPlan?.currentMicrocycle,
+    microcycleWeek: currentPlan?.currentMicrocycle?.week,
+    microcycleDateRange: currentPlan?.currentMicrocycle?.dateRange,
+    loading
+  });
+
   if (loading) {
     return (
       <div className="container mx-auto p-6">
@@ -57,15 +67,18 @@ export function AICoachPage() {
 
   // No plan OR goals in draft → show goals generation flow
   if (!currentPlan || currentPlan.status === 'goals-draft') {
+    console.log('[AICoach Page] Showing GoalsGenerationFlow');
     return <GoalsGenerationFlow />;
   }
 
   // Goals approved but no workouts → show workout generation flow
   if (currentPlan.status === 'goals-approved' && !currentPlan.currentMicrocycle) {
+    console.log('[AICoach Page] Showing MicrocycleGenerationFlow');
     return <MicrocycleGenerationFlow />;
   }
 
   // Has active plan → show dashboard
+  console.log('[AICoach Page] Showing AICoachDashboard');
   return <AICoachDashboard plan={currentPlan} />;
 }
 
