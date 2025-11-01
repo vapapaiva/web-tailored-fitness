@@ -16,7 +16,7 @@ interface CompletedWorkoutsListProps {
  * Completed workouts list component
  */
 export function CompletedWorkoutsList({ workouts }: CompletedWorkoutsListProps) {
-  const { markAsIncomplete } = useWorkoutsStore();
+  const { markAsIncomplete, deleteWorkout } = useWorkoutsStore();
   const [executingWorkout, setExecutingWorkout] = useState<WorkoutDocument | null>(null);
 
   if (workouts.length === 0) {
@@ -35,6 +35,10 @@ export function CompletedWorkoutsList({ workouts }: CompletedWorkoutsListProps) 
     await markAsIncomplete(workout.id);
   };
 
+  const handleDeleteWorkout = async (workout: WorkoutDocument) => {
+    await deleteWorkout(workout.id);
+  };
+
   return (
     <>
       <div className="space-y-2">
@@ -44,6 +48,7 @@ export function CompletedWorkoutsList({ workouts }: CompletedWorkoutsListProps) 
             workout={workout}
             onStart={handleStartWorkout}
             onReset={handleResetWorkout}
+            onDelete={handleDeleteWorkout}
             isEditable={true}
             isDraggable={false}
             showSource={true}

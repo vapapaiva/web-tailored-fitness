@@ -21,13 +21,8 @@ import type {
   AIPlan, 
   GoalsGenerationRequest,
   GoalsGenerationResponse,
-  MicrocycleGenerationRequest,
-  MicrocycleGenerationResponse,
-  AIPlanUpdate,
-  MacrocycleGoal,
-  MesocycleMilestone
+  MicrocycleGenerationRequest
 } from '@/types/aiCoach';
-import type { WorkoutDocument } from '@/types/workout';
 import { sanitizeWorkoutForFirebase } from '@/lib/firebaseUtils';
 import { calculateInitialWeekRange, calculateDateInRange } from '@/lib/dateUtils';
 import { normalizeExercises } from '@/lib/workoutNormalization';
@@ -82,7 +77,6 @@ export const useAICoachStore = create<AICoachState>()(
 
       try {
         set({ generating: true, error: null });
-        console.log('[AICoach] Starting goals generation');
 
         // Fetch Remote Config
         await fetchAndActivate(remoteConfig);
@@ -96,25 +90,11 @@ export const useAICoachStore = create<AICoachState>()(
         }
 
         // Get goals generation prompt
-        console.log('[AICoach] Fetching prompt: prompts_ai_coach_goals_generation');
         const promptValue = getValue(remoteConfig, 'prompts_ai_coach_goals_generation');
-        const promptSource = promptValue.getSource();
-        let promptString = promptValue.asString();
-        
-        console.log('[AICoach] Prompt source:', promptSource, '(static=fallback, remote=Firebase, default=default value)');
-        console.log('[AICoach] Prompt found:', !!promptString, 'Length:', promptString?.length || 0);
-        
-        // Fallback to existing prompt if not configured
-        if (!promptString || promptSource === 'static') {
-          console.warn('[AICoach] Goals prompt not found in Firebase Remote Config, using existing fitness plan prompt as fallback');
-          console.warn('[AICoach] To use custom prompt, add parameter "prompts_ai_coach_goals_generation" to Firebase Remote Config and publish changes');
-          const fallbackPrompt = getValue(remoteConfig, 'prompts_fitness_plan_generation');
-          promptString = fallbackPrompt.asString();
-          console.log('[AICoach] Using fallback prompt, length:', promptString?.length || 0);
-        }
+        const promptString = promptValue.asString();
         
         if (!promptString) {
-          throw new Error('Goals generation prompt not configured in Firebase Remote Config');
+          throw new Error('Goals generation prompt (prompts_ai_coach_goals_generation) not configured in Firebase Remote Config');
         }
 
         const promptConfig = JSON.parse(promptString);
@@ -126,7 +106,15 @@ export const useAICoachStore = create<AICoachState>()(
           .replace('{CUSTOM_INPUT}', request.customInput)
           .replace('{CURRENT_DATE}', request.currentDate);
 
-        console.log('[AICoach] Calling OpenAI API for goals generation');
+        // 📤 LOG: Prompt being sent to AI
+        console.log('\n' + '='.repeat(80));
+        console.log('🤖 AI CALL: GOALS GENERATION');
+        console.log('='.repeat(80));
+        console.log('📋 SYSTEM PROMPT:');
+        console.log(promptConfig.system_prompt);
+        console.log('\n📝 USER PROMPT (with populated data):');
+        console.log(userPrompt);
+        console.log('='.repeat(80) + '\n');
 
         // Call OpenAI API
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -163,6 +151,13 @@ export const useAICoachStore = create<AICoachState>()(
           throw new Error('No response from OpenAI');
         }
 
+        // 📥 LOG: AI Response
+        console.log('\n' + '='.repeat(80));
+        console.log('✅ AI RESPONSE: GOALS GENERATION');
+        console.log('='.repeat(80));
+        console.log(content);
+        console.log('='.repeat(80) + '\n');
+
         // Clean and parse JSON response
         let cleanContent = content.trim();
         if (cleanContent.startsWith('```json')) {
@@ -171,24 +166,23 @@ export const useAICoachStore = create<AICoachState>()(
           cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
         }
         
-        console.log('[AICoach] Parsing AI response:', cleanContent.substring(0, 500));
-        
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let parsedResponse: any;
         try {
           parsedResponse = JSON.parse(cleanContent);
         } catch (parseError) {
-          console.error('[AICoach] JSON parse error:', parseError);
-          console.error('[AICoach] Content that failed to parse:', cleanContent);
+          console.error('❌ JSON parse error:', parseError);
+          console.error('❌ Content that failed to parse:', cleanContent);
           throw new Error('Failed to parse AI response as JSON');
         }
-        
-        console.log('[AICoach] Parsed response keys:', Object.keys(parsedResponse));
         
         // Handle two possible response formats:
         // 1. New format: { macrocycleGoal, mesocycleMilestones }
         // 2. Old format: { plan: { macrocycle, mesocycles } } (fallback from old prompt)
         
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let macrocycleData: any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let mesocyclesData: any[];
         
         if (parsedResponse.macrocycleGoal && parsedResponse.mesocycleMilestones) {
@@ -197,27 +191,21 @@ export const useAICoachStore = create<AICoachState>()(
           mesocyclesData = parsedResponse.mesocycleMilestones;
         } else if (parsedResponse.plan?.macrocycle && parsedResponse.plan?.macrocycle?.mesocycles) {
           // Old format (from existing fitness plan prompt)
-          console.warn('[AICoach] Detected old prompt format, extracting goals from plan.macrocycle');
           macrocycleData = parsedResponse.plan.macrocycle;
           mesocyclesData = parsedResponse.plan.macrocycle.mesocycles;
         } else {
-          console.error('[AICoach] Invalid response structure:', parsedResponse);
           throw new Error(`Invalid goals response. Expected macrocycleGoal or plan.macrocycle, got: ${JSON.stringify(Object.keys(parsedResponse))}`);
         }
         
         // Validate macrocycle has required content fields
         if (!macrocycleData.name || !macrocycleData.value) {
-          console.error('[AICoach] Incomplete macrocycle:', macrocycleData);
           throw new Error('Macrocycle goal is missing required fields (name, value)');
         }
         
         // Validate mesocycles
         if (!Array.isArray(mesocyclesData) || mesocyclesData.length === 0) {
-          console.error('[AICoach] Invalid mesocycles:', mesocyclesData);
           throw new Error('Mesocycle milestones must be a non-empty array');
         }
-        
-        console.log('[AICoach] Validated goals successfully');
         
         // Generate IDs and dates in the app (not from AI)
         const now = new Date();
@@ -250,8 +238,6 @@ export const useAICoachStore = create<AICoachState>()(
           generated_at: new Date().toISOString()
         };
 
-        console.log('[AICoach] Generated goals with', goalsResponse.mesocycleMilestones.length, 'mesocycles');
-
         // Create AI plan with goals (draft status)
         const newPlan: AIPlan = {
           id: `aiplan_${Date.now()}`,
@@ -275,10 +261,9 @@ export const useAICoachStore = create<AICoachState>()(
         await setDoc(planDocRef, sanitizeWorkoutForFirebase(newPlan));
 
         set({ currentPlan: newPlan, generating: false });
-        console.log('[AICoach] Goals saved to Firebase');
 
       } catch (error) {
-        console.error('[AICoach] Generate goals error:', error);
+        console.error('❌ Generate goals error:', error);
         set({ 
           error: error instanceof Error ? error.message : 'Failed to generate goals',
           generating: false 
@@ -308,10 +293,9 @@ export const useAICoachStore = create<AICoachState>()(
         });
 
         set({ currentPlan: updatedPlan, loading: false });
-        console.log('[AICoach] Goals approved');
 
       } catch (error) {
-        console.error('[AICoach] Approve goals error:', error);
+        console.error('❌ Approve goals error:', error);
         set({ 
           error: error instanceof Error ? error.message : 'Failed to approve goals',
           loading: false 
@@ -345,10 +329,9 @@ export const useAICoachStore = create<AICoachState>()(
         });
 
         set({ currentPlan: updatedPlan, loading: false });
-        console.log('[AICoach] Goals updated manually');
 
       } catch (error) {
-        console.error('[AICoach] Update goals error:', error);
+        console.error('❌ Update goals error:', error);
         set({ 
           error: error instanceof Error ? error.message : 'Failed to update goals',
           loading: false 
@@ -365,11 +348,11 @@ export const useAICoachStore = create<AICoachState>()(
 
       try {
         set({ generating: true, error: null });
-        console.log('[AICoach] Regenerating goals with feedback');
 
         // Get user profile
-        const profileDoc = await getDoc(doc(db, 'users', user.uid, 'profile', 'data'));
-        const userProfile = profileDoc.exists() ? profileDoc.data() : {};
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userData = userDoc.exists() ? userDoc.data() : {};
+        const userProfile = userData.profile || {};
 
         // Build request with feedback
         const request: GoalsGenerationRequest = {
@@ -406,7 +389,7 @@ export const useAICoachStore = create<AICoachState>()(
         }
 
       } catch (error) {
-        console.error('[AICoach] Regenerate goals error:', error);
+        console.error('❌ Regenerate goals error:', error);
         set({ 
           error: error instanceof Error ? error.message : 'Failed to regenerate goals',
           generating: false 
@@ -433,10 +416,9 @@ export const useAICoachStore = create<AICoachState>()(
             showRegenerationSuggestion: false 
           } 
         });
-        console.log('[AICoach] Regeneration suggestion dismissed');
 
       } catch (error) {
-        console.error('[AICoach] Dismiss suggestion error:', error);
+        console.error('❌ Dismiss suggestion error:', error);
       }
     },
 
@@ -453,7 +435,6 @@ export const useAICoachStore = create<AICoachState>()(
 
       try {
         set({ generating: true, error: null });
-        console.log('[AICoach] Starting microcycle generation');
 
         // Fetch Remote Config
         await fetchAndActivate(remoteConfig);
@@ -463,26 +444,47 @@ export const useAICoachStore = create<AICoachState>()(
           throw new Error('OpenAI API key not configured');
         }
 
-        // Use existing fitness plan generation prompt
-        const promptValue = getValue(remoteConfig, 'prompts_fitness_plan_generation');
+        // Get microcycle workout generation prompt
+        const promptValue = getValue(remoteConfig, 'prompts_ai_coach_workout_generation');
         const promptString = promptValue.asString();
+        
         if (!promptString) {
-          throw new Error('Workout generation prompt not configured');
+          throw new Error('Workout generation prompt (prompts_ai_coach_workout_generation) not configured in Firebase Remote Config');
         }
 
         const promptConfig = JSON.parse(promptString);
 
-        // Build user prompt
+        // Prepare previous microcycle data for prompt (if applicable)
+        const previousPlanned = request.previousMicrocycle 
+          ? `Week ${request.previousMicrocycle.planned.week} (${request.previousMicrocycle.planned.dateRange.start} to ${request.previousMicrocycle.planned.dateRange.end})\nFocus: ${request.previousMicrocycle.planned.focus}`
+          : '';
+        
+        const previousActual = request.previousMicrocycle
+          ? `Completed Workouts: ${request.previousMicrocycle.actual.completedWorkouts.length}\nCompletion Rate: ${Math.round(request.previousMicrocycle.actual.completionRate)}%\nReflection: ${request.previousMicrocycle.actual.weeklyReflection}`
+          : '';
+
+        // Build user prompt with all placeholders
         const userPrompt = promptConfig.user_prompt_template
           .replace('{USER_PROFILE}', JSON.stringify(request.userProfile, null, 2))
           .replace('{MACROCYCLE}', JSON.stringify(request.macrocycleGoal, null, 2))
           .replace('{MESOCYCLE}', JSON.stringify(request.mesocycleMilestones[0] || {}, null, 2))
           .replace('{CURRENT_DATE}', request.currentDate)
+          .replace('{NEXT_WEEK_NUMBER}', String(request.weekNumber))
           .replace('{WEEK_DATE_RANGE}', JSON.stringify(request.weekDateRange, null, 2))
+          .replace('{PREVIOUS_MICROCYCLE_PLANNED}', previousPlanned)
+          .replace('{PREVIOUS_MICROCYCLE_ACTUAL}', previousActual)
           .replace('{CUSTOM_PROMPT}', request.customFeedback || '')
           .replace('{WORKOUT_HISTORY}', JSON.stringify(request.workoutHistory || [], null, 2));
 
-        console.log('[AICoach] Calling OpenAI for microcycle generation');
+        // 📤 LOG: Prompt being sent to AI
+        console.log('\n' + '='.repeat(80));
+        console.log('🤖 AI CALL: MICROCYCLE GENERATION');
+        console.log('='.repeat(80));
+        console.log('📋 SYSTEM PROMPT:');
+        console.log(promptConfig.system_prompt);
+        console.log('\n📝 USER PROMPT (with populated data):');
+        console.log(userPrompt);
+        console.log('='.repeat(80) + '\n');
 
         // Call OpenAI
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -510,6 +512,13 @@ export const useAICoachStore = create<AICoachState>()(
         let content = data.choices[0]?.message?.content;
         if (!content) throw new Error('No response from OpenAI');
 
+        // 📥 LOG: AI Response
+        console.log('\n' + '='.repeat(80));
+        console.log('✅ AI RESPONSE: MICROCYCLE GENERATION');
+        console.log('='.repeat(80));
+        console.log(content);
+        console.log('='.repeat(80) + '\n');
+
         // Clean JSON
         content = content.trim();
         if (content.startsWith('```json')) {
@@ -522,37 +531,50 @@ export const useAICoachStore = create<AICoachState>()(
         const microcycleData = aiResponse.plan?.currentMicrocycle;
         if (!microcycleData) throw new Error('Invalid AI response');
 
-        console.log('[AICoach] Generated', microcycleData.workouts?.length || 0, 'workouts');
-
         // Create workout documents in WorkoutsStore (as drafts)
         const workoutIds: string[] = [];
         
-        console.log('[AICoach] Week date range:', request.weekDateRange);
-        console.log('[AICoach] Week start (should be Monday):', request.weekDateRange.start);
+        // Track used dates to handle multiple workouts on same dayOfWeek
+        const usedDates = new Set<string>();
         
         for (const workoutData of microcycleData.workouts || []) {
           // Validate and normalize dayOfWeek (AI sometimes returns invalid values)
           let dayOfWeek = workoutData.dayOfWeek;
+          
           if (dayOfWeek === 7 || dayOfWeek > 6) {
-            console.warn(`[AICoach] Invalid dayOfWeek=${dayOfWeek}, normalizing to 0 (Sunday)`);
             dayOfWeek = 0; // Sunday
           }
           if (dayOfWeek < 0) {
-            console.warn(`[AICoach] Invalid dayOfWeek=${dayOfWeek}, normalizing to 1 (Monday)`);
             dayOfWeek = 1; // Monday
           }
           
-          // CRITICAL: Use calculateDateInRange for microcycles that don't start on Monday
-          // This finds the actual date within the microcycle range that matches the dayOfWeek
-          const date = calculateDateInRange(dayOfWeek, request.weekDateRange.start, request.weekDateRange.end);
+          // CRITICAL: Find NEXT unused date with this dayOfWeek
+          let date: string | null = null;
+          const startDate = new Date(request.weekDateRange.start);
+          const endDate = new Date(request.weekDateRange.end);
           
-          if (!date) {
-            console.error(`[AICoach] Could not find dayOfWeek=${dayOfWeek} in range ${request.weekDateRange.start} to ${request.weekDateRange.end}`);
-            continue; // Skip this workout
+          let currentDate = new Date(startDate);
+          while (currentDate <= endDate) {
+            if (currentDate.getDay() === dayOfWeek) {
+              const year = currentDate.getFullYear();
+              const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+              const day = String(currentDate.getDate()).padStart(2, '0');
+              const dateStr = `${year}-${month}-${day}`;
+              
+              // Check if this date is already used
+              if (!usedDates.has(dateStr)) {
+                date = dateStr;
+                usedDates.add(dateStr);
+                break;
+              }
+            }
+            currentDate.setDate(currentDate.getDate() + 1);
           }
           
-          console.log(`[AICoach] Creating workout: dayOfWeek=${dayOfWeek}, calculated date=${date}, name=${workoutData.name}`);
-          console.log(`[AICoach] Validation: ${new Date(date).getDay()} should equal ${dayOfWeek}`);
+          if (!date) {
+            console.error(`❌ Could not find unused dayOfWeek=${dayOfWeek} in range ${request.weekDateRange.start} to ${request.weekDateRange.end}`);
+            continue; // Skip this workout
+          }
           
           // Normalize exercises to ensure volumeType is correctly set
           const normalizedExercises = normalizeExercises(workoutData.exercises || []);
@@ -580,10 +602,6 @@ export const useAICoachStore = create<AICoachState>()(
           
           workoutIds.push(workoutId);
         }
-        
-        console.log('[AICoach] Created', workoutIds.length, 'workout documents with dates');
-
-        console.log('[AICoach] Created', workoutIds.length, 'workout documents');
 
         // Update AI plan with microcycle reference
         const { currentPlan } = get();
@@ -607,10 +625,9 @@ export const useAICoachStore = create<AICoachState>()(
         await setDoc(planDocRef, sanitizeWorkoutForFirebase(updatedPlan));
 
         set({ currentPlan: updatedPlan, generating: false });
-        console.log('[AICoach] Microcycle generation complete');
 
       } catch (error) {
-        console.error('[AICoach] Generate microcycle error:', error);
+        console.error('❌ Generate microcycle error:', error);
         set({ 
           error: error instanceof Error ? error.message : 'Failed to generate microcycle',
           generating: false 
@@ -637,10 +654,9 @@ export const useAICoachStore = create<AICoachState>()(
         set({ 
           currentPlan: { ...currentPlan, status: 'active' } 
         });
-        console.log('[AICoach] Microcycle approved');
 
       } catch (error) {
-        console.error('[AICoach] Approve microcycle error:', error);
+        console.error('❌ Approve microcycle error:', error);
       }
     },
 
@@ -656,13 +672,9 @@ export const useAICoachStore = create<AICoachState>()(
         set({ generating: true });
         
         // Smart deletion: Preserve workouts that user has started
-        let deletedCount = 0;
-        let preservedCount = 0;
-        
         for (const workoutId of currentPlan.currentMicrocycle.workoutIds) {
           const workout = workoutsStore.workouts.find(w => w.id === workoutId);
           if (!workout) {
-            console.log(`[AICoach] Workout ${workoutId} not found in store, skipping`);
             continue;
           }
           
@@ -677,28 +689,19 @@ export const useAICoachStore = create<AICoachState>()(
           
           if (hasProgress) {
             // PRESERVE: Detach from microcycle but keep the workout
-            console.log(`[AICoach] Preserving workout "${workout.name}" - user has made progress`);
-            
-            // Update workout to remove AI Coach context (no longer locked to this microcycle)
-            // User can now delete it manually if they want
             await workoutsStore.updateWorkout(workoutId, {
               aiCoachContext: undefined // Remove microcycle association
             });
-            
-            preservedCount++;
           } else {
             // DELETE: User hasn't touched this workout, safe to delete
-            console.log(`[AICoach] Deleting untouched workout "${workout.name}"`);
             await workoutsStore.deleteWorkout(workoutId);
-            deletedCount++;
           }
         }
-        
-        console.log(`[AICoach] Regeneration cleanup: ${deletedCount} deleted, ${preservedCount} preserved`);
 
         // Get user profile
-        const profileDoc = await getDoc(doc(db, 'users', user.uid, 'profile', 'data'));
-        const userProfile = profileDoc.exists() ? profileDoc.data() : {};
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userData = userDoc.exists() ? userDoc.data() : {};
+        const userProfile = userData.profile || {};
 
         // Regenerate with feedback
         const request: MicrocycleGenerationRequest = {
@@ -714,7 +717,7 @@ export const useAICoachStore = create<AICoachState>()(
         await get().generateMicrocycle(request);
 
       } catch (error) {
-        console.error('[AICoach] Regenerate microcycle error:', error);
+        console.error('❌ Regenerate microcycle error:', error);
         set({ 
           error: error instanceof Error ? error.message : 'Failed to regenerate microcycle',
           generating: false 
@@ -758,10 +761,9 @@ export const useAICoachStore = create<AICoachState>()(
         });
 
         set({ currentPlan: updatedPlan });
-        console.log('[AICoach] Microcycle marked as complete, ready for next week generation');
 
       } catch (error) {
-        console.error('[AICoach] Complete microcycle error:', error);
+        console.error('❌ Complete microcycle error:', error);
         set({ error: error instanceof Error ? error.message : 'Failed to complete microcycle' });
       }
     },
@@ -796,8 +798,9 @@ export const useAICoachStore = create<AICoachState>()(
         };
 
         // Get user profile
-        const profileDoc = await getDoc(doc(db, 'users', user.uid, 'profile', 'data'));
-        const userProfile = profileDoc.exists() ? profileDoc.data() : {};
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const userData = userDoc.exists() ? userDoc.data() : {};
+        const userProfile = userData.profile || {};
 
         // Calculate next week date range
         const today = new Date();
@@ -847,10 +850,8 @@ export const useAICoachStore = create<AICoachState>()(
           });
         }
 
-        console.log('[AICoach] Next microcycle generated and previous microcycle archived');
-
       } catch (error) {
-        console.error('[AICoach] Generate next microcycle error:', error);
+        console.error('❌ Generate next microcycle error:', error);
         set({ 
           error: error instanceof Error ? error.message : 'Failed to generate next microcycle',
           generating: false 
@@ -873,14 +874,12 @@ export const useAICoachStore = create<AICoachState>()(
         if (planDoc.exists()) {
           const planData = planDoc.data() as AIPlan;
           set({ currentPlan: planData, loading: false });
-          console.log('[AICoach] Loaded AI plan');
         } else {
           set({ currentPlan: null, loading: false });
-          console.log('[AICoach] No AI plan exists');
         }
 
       } catch (error) {
-        console.error('[AICoach] Load plan error:', error);
+        console.error('❌ Load plan error:', error);
         set({ 
           error: error instanceof Error ? error.message : 'Failed to load plan',
           loading: false 
@@ -901,17 +900,15 @@ export const useAICoachStore = create<AICoachState>()(
         if (doc.exists()) {
           const serverData = doc.data() as AIPlan;
           set({ currentPlan: serverData });
-          console.log('[AICoach] Real-time update received');
         } else {
           set({ currentPlan: null });
         }
       }, (error) => {
-        console.error('[AICoach] Realtime sync error:', error);
+        console.error('❌ Realtime sync error:', error);
         set({ error: 'Failed to sync with server' });
       });
 
       set({ realtimeUnsubscribe: unsubscribe });
-      console.log('[AICoach] Real-time sync started');
     },
 
     stopRealtimeSync: () => {
@@ -919,7 +916,6 @@ export const useAICoachStore = create<AICoachState>()(
       if (realtimeUnsubscribe) {
         realtimeUnsubscribe();
         set({ realtimeUnsubscribe: null });
-        console.log('[AICoach] Real-time sync stopped');
       }
     },
 

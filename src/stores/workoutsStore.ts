@@ -140,8 +140,6 @@ export const useWorkoutsStore = create<WorkoutsState>()(
           .filter(Boolean);
         const rank = generateInitialRank(existingRanks);
         
-        console.log('[WorkoutsStore] Creating workout, existing ranks for date', workoutData.date, ':', existingRanks, 'new rank:', rank);
-        
         // Compute dayOfWeek from date if date is provided
         let dayOfWeek: number | undefined;
         if (workoutData.date) {

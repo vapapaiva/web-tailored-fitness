@@ -80,8 +80,9 @@ export function MicrocycleGenerationFlow() {
     setWaitingForWorkouts(false);
 
     // Get user profile
-    const profileDoc = await getDoc(doc(db, 'users', user.uid, 'profile', 'data'));
-    const userProfile = profileDoc.exists() ? profileDoc.data() : {};
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    const userData = userDoc.exists() ? userDoc.data() : {};
+    const userProfile = userData.profile || {};
 
     // Calculate week date range
     const weekDateRange = calculateInitialWeekRange(new Date());

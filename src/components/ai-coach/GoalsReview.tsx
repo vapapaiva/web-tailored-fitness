@@ -10,10 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   CheckCircle, 
   RotateCcw, 
@@ -21,7 +19,6 @@ import {
   Calendar,
   ArrowLeft,
   AlertCircle,
-  ChevronDown,
   ChevronUp,
   Edit
 } from 'lucide-react';

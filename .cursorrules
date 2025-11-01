@@ -452,6 +452,29 @@ npm run lint         # Run ESLint
   - AI Coach and new Workouts system are independent and intact
 - **Reason**: Old fitness plan system (microcycles, week completion) was superseded by AI Coach + Workouts
 
+### 21. Dead Code Cleanup (2025-10-29)
+- **Files Removed** (11 files total):
+  - **Components** (3 files):
+    - `src/components/fitness/GapWorkoutCard.tsx` - Unused gap workout component
+    - `src/components/fitness/ErrorBoundary.tsx` - Unused error boundary
+    - `src/components/fitness/WorkoutExecutionMode.tsx` - Legacy execution mode (replaced by WorkoutExecutionDialog)
+  - **Libraries** (7 files):
+    - `src/lib/gapWorkoutParser.ts` - Gap workout parsing (only used by removed GapWorkoutCard)
+    - `src/lib/dateMigration.ts` - Unused date migration utilities
+    - `src/lib/workoutHistoryService.ts` - Old workout history service (replaced by workoutsStore)
+    - `src/lib/volumeCalculations.ts` - Duplicate volume calculations (replaced by improvedVolumeCalculations.ts)
+    - `src/lib/smartMuscleGroupAssignment.ts` - Unused muscle group assignment
+    - `src/lib/workoutCompletionLogic.ts` - Unused completion logic (workoutCompletion.ts is active)
+  - **Hooks** (1 file):
+    - `src/hooks/useDragState.ts` - Unused drag state hook
+- **Empty Directories**: `src/components/debug/`, `src/components/profile/` (Git auto-ignores)
+- **Impact**: 
+  - Removed ~2000 lines of dead code
+  - Improved codebase maintainability
+  - Reduced cognitive load for developers
+  - No functional changes - all removed code was unused
+- **Verification**: Full codebase audit performed with grep to confirm no imports/usage
+
 ---
 
 ## 🔄 In Progress Features
@@ -486,9 +509,9 @@ npm run lint         # Run ESLint
 - **Local JSON files**: Are examples only - actual config comes from Firebase
 
 ## 🔄 Last Updated
+Dead code cleanup completed on 2025-10-29 (removed 11 unused files)
+AI Coach week completion UI improvements on 2025-10-29 (microcycle naming, generation flow)
 Legacy fitness plan system removed and app restructured on 2025-10-16
-Progress page redesigned with stats and completed workouts on 2025-10-16
-Workout execution dialog enhanced with overall progress bar on 2025-10-16
 
 ---
 

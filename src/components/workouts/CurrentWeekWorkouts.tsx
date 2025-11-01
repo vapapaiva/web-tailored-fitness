@@ -38,6 +38,7 @@ function DroppableDay({
   onStartWorkout,
   onCompleteWorkout,
   onResetWorkout,
+  onDeleteWorkout,
   weekStart
 }: { 
   day: typeof DAYS[0]; 
@@ -45,6 +46,7 @@ function DroppableDay({
   onStartWorkout: (workout: WorkoutDocument) => void;
   onCompleteWorkout: (workout: WorkoutDocument) => void;
   onResetWorkout: (workout: WorkoutDocument) => void;
+  onDeleteWorkout: (workout: WorkoutDocument) => void;
   weekStart: string;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -78,6 +80,7 @@ function DroppableDay({
                 onStart={onStartWorkout}
                 onComplete={onCompleteWorkout}
                 onReset={onResetWorkout}
+                onDelete={onDeleteWorkout}
                 isEditable={true}
                 isDraggable={true}
                 showSource={true}
@@ -98,7 +101,7 @@ function DroppableDay({
  * Current week workouts component with drag & drop
  */
 export function CurrentWeekWorkouts({ workouts }: CurrentWeekWorkoutsProps) {
-  const { markAsComplete, markAsIncomplete } = useWorkoutsStore();
+  const { markAsComplete, markAsIncomplete, deleteWorkout } = useWorkoutsStore();
   const [executingWorkout, setExecutingWorkout] = useState<WorkoutDocument | null>(null);
   const weekStart = getWeekStartDate();
 
@@ -138,6 +141,10 @@ export function CurrentWeekWorkouts({ workouts }: CurrentWeekWorkoutsProps) {
     await markAsIncomplete(workout.id);
   };
 
+  const handleDeleteWorkout = async (workout: WorkoutDocument) => {
+    await deleteWorkout(workout.id);
+  };
+
   return (
     <>
       <div className="space-y-3">
@@ -152,6 +159,7 @@ export function CurrentWeekWorkouts({ workouts }: CurrentWeekWorkoutsProps) {
               onStartWorkout={handleStartWorkout}
               onCompleteWorkout={handleCompleteWorkout}
               onResetWorkout={handleResetWorkout}
+              onDeleteWorkout={handleDeleteWorkout}
               weekStart={weekStart}
             />
           );

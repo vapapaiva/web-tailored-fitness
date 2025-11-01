@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import type { AIPlan } from '@/types/aiCoach';
 import { useAICoachStore } from '@/stores/aiCoachStore';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';

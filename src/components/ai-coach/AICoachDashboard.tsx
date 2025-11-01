@@ -11,10 +11,8 @@ import { CurrentMicrocycleCard } from './CurrentMicrocycleCard';
 import { WeekCompletionDialog } from './WeekCompletionDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { CheckCircle, TrendingUp, ExternalLink, Sparkles, Loader2 } from 'lucide-react';
+import { TrendingUp, ExternalLink, Sparkles, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { daysSince, formatMicrocycleDateRange } from '@/lib/dateUtils';
 import { checkWeekCompletionState, getButtonClassName, getButtonText, getMessageClassName, getMessageEmoji } from '@/lib/weekCompletionLogic';
 
 interface AICoachDashboardProps {
@@ -45,14 +43,6 @@ export function AICoachDashboard({ plan }: AICoachDashboardProps) {
   // Re-check state every minute
   useEffect(() => {
     const state = checkWeekCompletionState(microcycleForCompletion as any);
-    console.log('[AICoach Dashboard] Week completion state check:', {
-      state: state.state,
-      canComplete: state.canComplete,
-      message: state.message,
-      daysSinceEnd: state.daysSinceEnd,
-      weekEnd: plan.currentMicrocycle?.dateRange.end,
-      today: new Date().toISOString().split('T')[0]
-    });
     setCompletionState(state);
     
     const interval = setInterval(() => {

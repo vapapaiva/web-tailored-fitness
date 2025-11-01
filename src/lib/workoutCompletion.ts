@@ -3,7 +3,7 @@
  * Determines if a workout is not started, partially done, or completed
  */
 
-import type { Workout, Exercise, ExerciseSet } from '@/types/fitness';
+import type { Workout, Exercise } from '@/types/fitness';
 
 export interface WorkoutCompletionStats {
   status: 'not-started' | 'partially-done' | 'completed';

@@ -133,7 +133,7 @@ export function ProgressPage() {
         )}
 
         {/* Stats Section (Expandable) */}
-        <Card>
+          <Card>
           <CardHeader>
             <Collapsible open={isStatsExpanded} onOpenChange={setIsStatsExpanded}>
               <CollapsibleTrigger asChild>
@@ -150,18 +150,18 @@ export function ProgressPage() {
                 <VolumeStatsDisplay completedWorkouts={completedWorkouts} />
               </CollapsibleContent>
             </Collapsible>
-          </CardHeader>
-        </Card>
+            </CardHeader>
+          </Card>
 
         {/* Completed Workouts Section */}
-        <Card>
+          <Card>
           <CardHeader>
             <CardTitle>Completed Workouts</CardTitle>
-          </CardHeader>
-          <CardContent>
+            </CardHeader>
+            <CardContent>
             <CompletedWorkoutsList workouts={completedWorkouts} />
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
       </div>
     </div>
   );

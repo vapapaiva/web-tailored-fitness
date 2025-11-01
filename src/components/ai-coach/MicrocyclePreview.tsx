@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import type { AIPlan } from '@/types/aiCoach';
+import type { WorkoutDocument } from '@/types/workout';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
 import { useAICoachStore } from '@/stores/aiCoachStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,8 +19,7 @@ import {
   Calendar,
   Dumbbell
 } from 'lucide-react';
-import { formatMicrocycleDateRange } from '@/lib/dateUtils';
-import { formatWeekHeader, getWeekStartDate } from '@/lib/dateUtils';
+import { formatMicrocycleDateRange, formatWeekHeader } from '@/lib/dateUtils';
 
 interface MicrocyclePreviewProps {
   plan: AIPlan;
@@ -42,6 +42,7 @@ const DAYS = [
 export function MicrocyclePreview({ plan, onApprove }: MicrocyclePreviewProps) {
   const { regenerateMicrocycle, generating } = useAICoachStore();
   const workouts = useWorkoutsStore(state => state.workouts);
+  const { deleteWorkout } = useWorkoutsStore();
   
   const [showRegenerate, setShowRegenerate] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -54,22 +55,38 @@ export function MicrocyclePreview({ plan, onApprove }: MicrocyclePreviewProps) {
     plan.currentMicrocycle?.workoutIds.includes(w.id)
   );
 
-  // Group by day
-  const workoutsByDay = new Map();
+  // Group by actual date (not dayOfWeek)
+  const workoutsByDate = new Map<string, WorkoutDocument[]>();
   microcycleWorkouts.forEach(w => {
-    if (w.dayOfWeek !== undefined) {
-      if (!workoutsByDay.has(w.dayOfWeek)) {
-        workoutsByDay.set(w.dayOfWeek, []);
+    if (w.date) {
+      if (!workoutsByDate.has(w.date)) {
+        workoutsByDate.set(w.date, []);
       }
-      workoutsByDay.get(w.dayOfWeek).push(w);
+      workoutsByDate.get(w.date)!.push(w);
     }
   });
+
+  // Get sorted dates in microcycle range
+  const microcycleDates: Array<{ date: string; dayOfWeek: number; dayName: string }> = [];
+  const startDate = new Date(plan.currentMicrocycle.dateRange.start);
+  const endDate = new Date(plan.currentMicrocycle.dateRange.end);
+  
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().split('T')[0];
+    const dayOfWeek = d.getDay();
+    const dayName = DAYS.find(day => day.id === dayOfWeek)?.name || '';
+    microcycleDates.push({ date: dateStr, dayOfWeek, dayName });
+  }
 
   const handleRegenerate = async () => {
     if (!feedback.trim()) return;
     await regenerateMicrocycle(feedback);
     setFeedback('');
     setShowRegenerate(false);
+  };
+
+  const handleDeleteWorkout = async (workout: WorkoutDocument) => {
+    await deleteWorkout(workout.id);
   };
 
   const editingWorkout = editingWorkoutId ? workouts.find(w => w.id === editingWorkoutId) : null;
@@ -116,21 +133,22 @@ export function MicrocyclePreview({ plan, onApprove }: MicrocyclePreviewProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {DAYS.map(day => {
-              const dayWorkouts = workoutsByDay.get(day.id) || [];
+            {microcycleDates.map(({ date, dayName }) => {
+              const dayWorkouts = workoutsByDate.get(date) || [];
               if (dayWorkouts.length === 0) return null;
 
               return (
-                <div key={day.id}>
+                <div key={date}>
                   <div className="text-sm font-medium text-muted-foreground mb-2">
-                    {day.name}
+                    {dayName}, {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </div>
                   <div className="space-y-2">
-                    {dayWorkouts.map((workout: any) => (
+                    {dayWorkouts.map((workout: WorkoutDocument) => (
                       <WorkoutCardV2
                         key={workout.id}
                         workout={workout}
                         onStart={(w) => setEditingWorkoutId(w.id)}
+                        onDelete={handleDeleteWorkout}
                         isEditable={true}
                         isDraggable={false}
                         showSource={false}

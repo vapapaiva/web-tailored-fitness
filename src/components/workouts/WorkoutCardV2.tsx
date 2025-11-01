@@ -17,7 +17,8 @@ import {
   CheckCircle, 
   RotateCcw,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import { 
   analyzeWorkoutCompletion, 
@@ -30,6 +31,7 @@ interface WorkoutCardV2Props {
   onStart: (workout: WorkoutDocument) => void;
   onComplete?: (workout: WorkoutDocument) => void;
   onReset?: (workout: WorkoutDocument) => void;
+  onDelete?: (workout: WorkoutDocument) => void;
   isEditable?: boolean;
   isDraggable?: boolean; // Enable drag & drop
   showSource?: boolean; // Show manual vs AI Coach badge
@@ -43,11 +45,13 @@ export const WorkoutCardV2 = React.memo(function WorkoutCardV2({
   onStart, 
   onComplete,
   onReset,
+  onDelete,
   isEditable = true,
   isDraggable = false,
   showSource = true
 }: WorkoutCardV2Props) {
   const navigate = useNavigate();
+  const [isHovered, setIsHovered] = useState(false);
   
   // Only use sortable if draggable
   const sortableProps = isDraggable ? useSortable({
@@ -165,6 +169,8 @@ export const WorkoutCardV2 = React.memo(function WorkoutCardV2({
       {...(isDraggable ? listeners : {})}
       onClick={handleCardClick}
       onMouseDown={handleMouseDown}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <CardContent className="p-3">
         <div className="flex items-center justify-between">
@@ -264,6 +270,24 @@ export const WorkoutCardV2 = React.memo(function WorkoutCardV2({
                   title="Reset workout"
                 >
                   <RotateCcw className="h-3 w-3" />
+                </Button>
+              )}
+              
+              {/* Delete Button - shown on hover only */}
+              {/* AI Coach workouts can only be deleted if detached (no aiCoachContext) */}
+              {onDelete && isHovered && !(workout.source === 'ai-coach' && workout.aiCoachContext) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={(e) => handleButtonClick(e, () => {
+                    if (confirm(`Delete workout "${workout.name}"?`)) {
+                      onDelete(workout);
+                    }
+                  })}
+                  title="Delete workout"
+                >
+                  <Trash2 className="h-3 w-3" />
                 </Button>
               )}
             </div>

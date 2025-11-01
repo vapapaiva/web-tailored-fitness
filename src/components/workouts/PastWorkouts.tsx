@@ -16,7 +16,7 @@ interface PastWorkoutsProps {
  * Past workouts component
  */
 export function PastWorkouts({ workouts }: PastWorkoutsProps) {
-  const { markAsComplete } = useWorkoutsStore();
+  const { markAsComplete, deleteWorkout } = useWorkoutsStore();
   const [executingWorkout, setExecutingWorkout] = useState<WorkoutDocument | null>(null);
 
   if (workouts.length === 0) {
@@ -36,6 +36,10 @@ export function PastWorkouts({ workouts }: PastWorkoutsProps) {
     setExecutingWorkout(null);
   };
 
+  const handleDeleteWorkout = async (workout: WorkoutDocument) => {
+    await deleteWorkout(workout.id);
+  };
+
   return (
     <>
       <div className="space-y-2">
@@ -45,6 +49,7 @@ export function PastWorkouts({ workouts }: PastWorkoutsProps) {
             workout={workout}
             onStart={handleStartWorkout}
             onComplete={handleCompleteWorkout}
+            onDelete={handleDeleteWorkout}
             isEditable={true}
             isDraggable={true}
             showSource={true}

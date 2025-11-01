@@ -160,33 +160,30 @@ export function TestingPage() {
                   onClick={async () => {
                     if (!user) return;
                     try {
-                      // Smart deletion: Handle workouts first
+                      // Smart deletion: Handle ALL AI Coach workouts (not just current microcycle)
                       let deletedCount = 0;
                       let preservedCount = 0;
                       
-                      if (aiPlan?.currentMicrocycle) {
-                        const microcycleWorkouts = workoutsStore.workouts.filter(w => 
-                          aiPlan.currentMicrocycle?.workoutIds.includes(w.id)
-                        );
+                      // Get ALL AI Coach workouts
+                      const allAIWorkouts = workoutsStore.workouts.filter(w => w.source === 'ai-coach');
+                      
+                      for (const workout of allAIWorkouts) {
+                        // Check if user has made any progress
+                        const hasProgress = 
+                          workout.exercises.some(ex => ex.sets.some(set => set.completed === true)) ||
+                          workout.hasManualChanges === true ||
+                          workout.status === 'completed';
                         
-                        for (const workout of microcycleWorkouts) {
-                          // Check if user has made any progress
-                          const hasProgress = 
-                            workout.exercises.some(ex => ex.sets.some(set => set.completed === true)) ||
-                            workout.hasManualChanges === true ||
-                            workout.status === 'completed';
-                          
-                          if (hasProgress) {
-                            // PRESERVE: Detach from microcycle but keep the workout
-                            await workoutsStore.updateWorkout(workout.id, {
-                              aiCoachContext: undefined // Remove microcycle association
-                            });
-                            preservedCount++;
-                          } else {
-                            // DELETE: User hasn't touched this workout
-                            await workoutsStore.deleteWorkout(workout.id);
-                            deletedCount++;
-                          }
+                        if (hasProgress) {
+                          // PRESERVE: Detach from microcycle but keep the workout
+                          await workoutsStore.updateWorkout(workout.id, {
+                            aiCoachContext: undefined // Remove microcycle association
+                          });
+                          preservedCount++;
+                        } else {
+                          // DELETE: User hasn't touched this workout
+                          await workoutsStore.deleteWorkout(workout.id);
+                          deletedCount++;
                         }
                       }
                       

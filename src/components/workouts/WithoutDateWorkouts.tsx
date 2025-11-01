@@ -16,6 +16,7 @@ interface WithoutDateWorkoutsProps {
  * Without date workouts component
  */
 export function WithoutDateWorkouts({ workouts }: WithoutDateWorkoutsProps) {
+  const { deleteWorkout } = useWorkoutsStore();
   const [executingWorkout, setExecutingWorkout] = useState<WorkoutDocument | null>(null);
 
   if (workouts.length === 0) {
@@ -37,6 +38,10 @@ export function WithoutDateWorkouts({ workouts }: WithoutDateWorkoutsProps) {
     setExecutingWorkout(null);
   };
 
+  const handleDeleteWorkout = async (workout: WorkoutDocument) => {
+    await deleteWorkout(workout.id);
+  };
+
   return (
     <>
       <div className="space-y-2">
@@ -45,6 +50,7 @@ export function WithoutDateWorkouts({ workouts }: WithoutDateWorkoutsProps) {
             key={workout.id}
             workout={workout}
             onStart={handleStartWorkout}
+            onDelete={handleDeleteWorkout}
             isEditable={true}
             isDraggable={true}
             showSource={true}

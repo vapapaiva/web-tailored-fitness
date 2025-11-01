@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { WorkoutCardV2 } from '@/components/workouts/WorkoutCardV2';
 import { WorkoutExecutionDialog } from '@/components/workouts/WorkoutExecutionDialog';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
-import { Calendar, Dumbbell, RotateCcw } from 'lucide-react';
+import { Calendar, RotateCcw } from 'lucide-react';
 import { formatWeekHeader } from '@/lib/dateUtils';
 
 interface CurrentMicrocycleCardProps {
@@ -35,7 +35,7 @@ const DAYS = [
  * Current microcycle card component
  */
 export function CurrentMicrocycleCard({ plan, workouts }: CurrentMicrocycleCardProps) {
-  const { markAsComplete, markAsIncomplete } = useWorkoutsStore();
+  const { markAsComplete, markAsIncomplete, deleteWorkout } = useWorkoutsStore();
   const { regenerateMicrocycle } = useAICoachStore();
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
   const [showRegenerate, setShowRegenerate] = useState(false);
@@ -43,16 +43,28 @@ export function CurrentMicrocycleCard({ plan, workouts }: CurrentMicrocycleCardP
 
   if (!plan.currentMicrocycle) return null;
 
-  // Group by day
-  const workoutsByDay = new Map();
+  // Group by actual date (not dayOfWeek)
+  const workoutsByDate = new Map<string, WorkoutDocument[]>();
   workouts.forEach(w => {
-    if (w.dayOfWeek !== undefined) {
-      if (!workoutsByDay.has(w.dayOfWeek)) {
-        workoutsByDay.set(w.dayOfWeek, []);
+    if (w.date) {
+      if (!workoutsByDate.has(w.date)) {
+        workoutsByDate.set(w.date, []);
       }
-      workoutsByDay.get(w.dayOfWeek).push(w);
+      workoutsByDate.get(w.date)!.push(w);
     }
   });
+
+  // Get sorted dates in microcycle range
+  const microcycleDates: Array<{ date: string; dayOfWeek: number; dayName: string }> = [];
+  const startDate = new Date(plan.currentMicrocycle.dateRange.start);
+  const endDate = new Date(plan.currentMicrocycle.dateRange.end);
+  
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().split('T')[0];
+    const dayOfWeek = d.getDay();
+    const dayName = DAYS.find(day => day.id === dayOfWeek)?.name || '';
+    microcycleDates.push({ date: dateStr, dayOfWeek, dayName });
+  }
 
   const handleCompleteWorkout = async (workout: WorkoutDocument) => {
     await markAsComplete(workout.id);
@@ -61,6 +73,10 @@ export function CurrentMicrocycleCard({ plan, workouts }: CurrentMicrocycleCardP
 
   const handleResetWorkout = async (workout: WorkoutDocument) => {
     await markAsIncomplete(workout.id);
+  };
+
+  const handleDeleteWorkout = async (workout: WorkoutDocument) => {
+    await deleteWorkout(workout.id);
   };
 
   const editingWorkout = editingWorkoutId ? workouts.find(w => w.id === editingWorkoutId) : null;
@@ -126,14 +142,14 @@ export function CurrentMicrocycleCard({ plan, workouts }: CurrentMicrocycleCardP
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {DAYS.map(day => {
-              const dayWorkouts = workoutsByDay.get(day.id) || [];
+            {microcycleDates.map(({ date, dayName }) => {
+              const dayWorkouts = workoutsByDate.get(date) || [];
               if (dayWorkouts.length === 0) return null;
 
               return (
-                <div key={day.id}>
+                <div key={date}>
                   <div className="text-sm font-medium text-muted-foreground mb-2">
-                    {day.name}
+                    {dayName}, {new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </div>
                   <div className="space-y-2">
                     {dayWorkouts.map((workout: WorkoutDocument) => (
@@ -143,6 +159,7 @@ export function CurrentMicrocycleCard({ plan, workouts }: CurrentMicrocycleCardP
                         onStart={(w) => setEditingWorkoutId(w.id)}
                         onComplete={handleCompleteWorkout}
                         onReset={handleResetWorkout}
+                        onDelete={handleDeleteWorkout}
                         isEditable={true}
                         isDraggable={false}
                         showSource={false}
