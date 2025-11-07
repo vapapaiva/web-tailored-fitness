@@ -1,17 +1,16 @@
 /**
  * Goals Editor - Manual editing of macrocycle and mesocycle goals
+ * Uses simple text-based format for direct editing
  */
 
 import { useState } from 'react';
 import type { AIPlan, MacrocycleGoal, MesocycleMilestone } from '@/types/aiCoach';
 import { useAICoachStore } from '@/stores/aiCoachStore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Save, X, Target, Calendar } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Save, X, Info, AlertCircle } from 'lucide-react';
 
 interface GoalsEditorProps {
   plan: AIPlan;
@@ -20,26 +19,175 @@ interface GoalsEditorProps {
 }
 
 /**
- * Goals editor component
+ * Parse text format into structured goals
+ */
+function parseGoalsText(text: string): { macrocycle: MacrocycleGoal; mesocycles: MesocycleMilestone[] } | null {
+  try {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    
+    let macrocycle: MacrocycleGoal | null = null;
+    const mesocycles: MesocycleMilestone[] = [];
+    
+    let currentSection: 'macro' | 'meso' | null = null;
+    let currentMeso: Partial<MesocycleMilestone> | null = null;
+    let mesoIndex = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Section headers
+      if (line === 'MACRO GOAL:') {
+        currentSection = 'macro';
+        macrocycle = {
+          name: '',
+          value: '',
+          promisedOutcome: '',
+          durationWeeks: 24,
+          startDate: '',
+          endDate: ''
+        };
+        continue;
+      }
+      
+      if (line === 'MESOCYCLES:') {
+        currentSection = 'meso';
+        continue;
+      }
+      
+      // Check for new mesocycle
+      const phaseMatch = line.match(/^Phase \d+:$/);
+      if (phaseMatch && currentSection === 'meso') {
+        // Save previous mesocycle if exists
+        if (currentMeso && currentMeso.name) {
+          mesocycles.push({
+            id: `meso_${Date.now()}_${mesoIndex}`,
+            name: currentMeso.name || '',
+            value: currentMeso.value || '',
+            focus: currentMeso.focus || '',
+            durationWeeks: currentMeso.durationWeeks || 4,
+            startDate: currentMeso.startDate || '',
+            endDate: currentMeso.endDate || ''
+          });
+          mesoIndex++;
+        }
+        // Start new mesocycle
+        currentMeso = {};
+        continue;
+      }
+      
+      // Parse field values
+      if (currentSection === 'macro' && macrocycle) {
+        if (line.startsWith('Name:')) {
+          macrocycle.name = line.substring(5).trim();
+        } else if (line.startsWith('Description:')) {
+          macrocycle.value = line.substring(12).trim();
+        } else if (line.startsWith('Duration:')) {
+          const weeks = parseInt(line.substring(9).trim());
+          if (!isNaN(weeks)) macrocycle.durationWeeks = weeks;
+        }
+      } else if (currentSection === 'meso' && currentMeso) {
+        if (line.startsWith('Name:')) {
+          currentMeso.name = line.substring(5).trim();
+        } else if (line.startsWith('Focus:')) {
+          currentMeso.focus = line.substring(6).trim();
+        } else if (line.startsWith('Duration:')) {
+          const weeks = parseInt(line.substring(9).trim());
+          if (!isNaN(weeks)) currentMeso.durationWeeks = weeks;
+        } else if (line.startsWith('Description:')) {
+          currentMeso.value = line.substring(12).trim();
+        }
+      }
+    }
+    
+    // Save last mesocycle
+    if (currentMeso && currentMeso.name) {
+      mesocycles.push({
+        id: `meso_${Date.now()}_${mesoIndex}`,
+        name: currentMeso.name || '',
+        value: currentMeso.value || '',
+        focus: currentMeso.focus || '',
+        durationWeeks: currentMeso.durationWeeks || 4,
+        startDate: currentMeso.startDate || '',
+        endDate: currentMeso.endDate || ''
+      });
+    }
+    
+    if (!macrocycle || mesocycles.length === 0) {
+      return null;
+    }
+    
+    return { macrocycle, mesocycles };
+  } catch (error) {
+    console.error('Failed to parse goals text:', error);
+    return null;
+  }
+}
+
+/**
+ * Convert structured goals to text format
+ */
+function goalsToText(macrocycle: MacrocycleGoal, mesocycles: MesocycleMilestone[]): string {
+  let text = 'MACRO GOAL:\n';
+  text += `Name: ${macrocycle.name}\n`;
+  text += `Description: ${macrocycle.value}\n`;
+  text += `Duration: ${macrocycle.durationWeeks}\n`;
+  text += '\n';
+  text += 'MESOCYCLES:\n\n';
+  
+  mesocycles.forEach((meso, index) => {
+    text += `Phase ${index + 1}:\n`;
+    text += `Name: ${meso.name}\n`;
+    text += `Focus: ${meso.focus}\n`;
+    text += `Duration: ${meso.durationWeeks}\n`;
+    text += `Description: ${meso.value}\n`;
+    if (index < mesocycles.length - 1) {
+      text += '\n';
+    }
+  });
+  
+  return text;
+}
+
+/**
+ * Goals editor component with text-based editing
  */
 export function GoalsEditor({ plan, onSave, onCancel }: GoalsEditorProps) {
   const { updateGoals } = useAICoachStore();
   
-  const [macrocycle, setMacrocycle] = useState<MacrocycleGoal>(plan.macrocycleGoal);
-  const [mesocycles, setMesocycles] = useState<MesocycleMilestone[]>(plan.mesocycleMilestones);
+  const [goalsText, setGoalsText] = useState(() => 
+    goalsToText(plan.macrocycleGoal, plan.mesocycleMilestones)
+  );
+  const [parseError, setParseError] = useState<string | null>(null);
 
   const handleSave = async () => {
+    // Parse and validate text before saving
+    const parsed = parseGoalsText(goalsText);
+    
+    if (!parsed) {
+      setParseError('Could not parse goals. Please check the format.');
+      return;
+    }
+    
+    setParseError(null);
+    
     await updateGoals({
-      macrocycleGoal: macrocycle,
-      mesocycleMilestones: mesocycles,
+      macrocycleGoal: {
+        ...plan.macrocycleGoal,
+        ...parsed.macrocycle,
+        // Preserve dates
+        startDate: plan.macrocycleGoal.startDate,
+        endDate: plan.macrocycleGoal.endDate,
+        promisedOutcome: plan.macrocycleGoal.promisedOutcome
+      },
+      mesocycleMilestones: parsed.mesocycles.map((meso, index) => ({
+        ...meso,
+        // Preserve or calculate dates
+        startDate: plan.mesocycleMilestones[index]?.startDate || '',
+        endDate: plan.mesocycleMilestones[index]?.endDate || ''
+      }))
     });
+    
     onSave();
-  };
-
-  const updateMesocycle = (index: number, updates: Partial<MesocycleMilestone>) => {
-    const updated = [...mesocycles];
-    updated[index] = { ...updated[index], ...updates };
-    setMesocycles(updated);
   };
 
   return (
@@ -49,132 +197,47 @@ export function GoalsEditor({ plan, onSave, onCancel }: GoalsEditorProps) {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Edit Your Fitness Goals</h1>
           <p className="text-muted-foreground mt-1">
-            Manually adjust your goals as needed
+            Edit directly in the text below
           </p>
         </div>
       </div>
 
-      {/* Macrocycle Editor */}
+      {/* Parse Error Alert */}
+      {parseError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{parseError}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Format Instructions */}
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          <strong>How to edit:</strong> Edit the text directly below. To add mesocycles, copy the "Phase X:" format. 
+          To remove, delete the entire phase section. Keep the format consistent: "Name:", "Description:", "Duration:", "Focus:".
+        </AlertDescription>
+      </Alert>
+
+      {/* Text Editor */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Target className="h-5 w-5" />
-            <span>6-Month Goal (Macrocycle)</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="macro-name">Goal Name</Label>
-            <Input
-              id="macro-name"
-              value={macrocycle.name}
-              onChange={(e) => setMacrocycle({ ...macrocycle, name: e.target.value })}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="macro-value">Description</Label>
-            <Textarea
-              id="macro-value"
-              value={macrocycle.value}
-              onChange={(e) => setMacrocycle({ ...macrocycle, value: e.target.value })}
-              rows={3}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="macro-outcome">Promised Outcome</Label>
-            <Textarea
-              id="macro-outcome"
-              value={macrocycle.promisedOutcome}
-              onChange={(e) => setMacrocycle({ ...macrocycle, promisedOutcome: e.target.value })}
-              rows={2}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="macro-duration">Duration (weeks)</Label>
-            <Input
-              id="macro-duration"
-              type="number"
-              value={macrocycle.durationWeeks}
-              onChange={(e) => setMacrocycle({ ...macrocycle, durationWeeks: parseInt(e.target.value) || 24 })}
-              min={1}
-              max={52}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Mesocycles Editor */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Calendar className="h-5 w-5" />
-            <span>Training Phases (Mesocycles)</span>
-          </CardTitle>
+          <CardTitle>Goals Editor</CardTitle>
+          <CardDescription>
+            Edit your macro goal and training phases directly
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {mesocycles.map((meso, index) => (
-              <Card key={meso.id} className="border-dashed">
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">Phase {index + 1}</Label>
-                    <Badge variant="outline" className="text-xs">
-                      {meso.durationWeeks} weeks
-                    </Badge>
-                  </div>
-                  
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor={`meso-${index}-name`} className="text-xs">Name</Label>
-                      <Input
-                        id={`meso-${index}-name`}
-                        value={meso.name}
-                        onChange={(e) => updateMesocycle(index, { name: e.target.value })}
-                        className="text-sm"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor={`meso-${index}-focus`} className="text-xs">Focus</Label>
-                      <Input
-                        id={`meso-${index}-focus`}
-                        value={meso.focus}
-                        onChange={(e) => updateMesocycle(index, { focus: e.target.value })}
-                        className="text-sm"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor={`meso-${index}-value`} className="text-xs">Description</Label>
-                    <Textarea
-                      id={`meso-${index}-value`}
-                      value={meso.value}
-                      onChange={(e) => updateMesocycle(index, { value: e.target.value })}
-                      rows={2}
-                      className="text-sm resize-none"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor={`meso-${index}-duration`} className="text-xs">Duration (weeks)</Label>
-                    <Input
-                      id={`meso-${index}-duration`}
-                      type="number"
-                      value={meso.durationWeeks}
-                      onChange={(e) => updateMesocycle(index, { durationWeeks: parseInt(e.target.value) || 4 })}
-                      className="text-sm"
-                      min={1}
-                      max={12}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <Textarea
+            value={goalsText}
+            onChange={(e) => {
+              setGoalsText(e.target.value);
+              setParseError(null);
+            }}
+            rows={20}
+            className="font-mono text-sm resize-none"
+            placeholder="Edit your goals here..."
+          />
         </CardContent>
       </Card>
 
@@ -195,4 +258,3 @@ export function GoalsEditor({ plan, onSave, onCancel }: GoalsEditorProps) {
     </div>
   );
 }
-

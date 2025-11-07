@@ -36,7 +36,7 @@ export function FitnessGoalsInput({
   onNext,
   isGenerating
 }: FitnessGoalsInputProps) {
-  const { user, updateProfile } = useAuthStore();
+  const { user } = useAuthStore();
   const { config } = useProfileConfigStore();
   const [localGoalValue, setLocalGoalValue] = useState<ProfileFieldValue>(user?.profile?.goals || '');
   
@@ -45,14 +45,10 @@ export function FitnessGoalsInput({
     .flatMap(s => s.fields)
     .find(f => f.id === 'goals');
 
-  const handleGoalChange = async (value: ProfileFieldValue) => {
+  const handleGoalChange = (value: ProfileFieldValue) => {
     setLocalGoalValue(value);
     onFitnessGoalChange(value as string);
-    
-    // Auto-save to profile
-    if (user?.profile) {
-      await updateProfile({ ...user.profile, goals: value });
-    }
+    // Don't save to profile - just local state for AI generation
   };
 
   return (

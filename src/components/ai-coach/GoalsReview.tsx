@@ -1,26 +1,22 @@
 /**
  * Goals Review - Review and approve/edit/regenerate generated goals
- * Step 4 of goals generation flow - with inline editing
+ * Step 4 of goals generation flow - with direct text editing
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { AIPlan, MacrocycleGoal, MesocycleMilestone } from '@/types/aiCoach';
 import { useAICoachStore } from '@/stores/aiCoachStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   CheckCircle, 
   RotateCcw, 
-  Target, 
-  Calendar,
   ArrowLeft,
   AlertCircle,
-  ChevronUp,
-  Edit
+  Info
 } from 'lucide-react';
 
 interface GoalsReviewProps {
@@ -29,30 +25,183 @@ interface GoalsReviewProps {
 }
 
 /**
- * Goals review component with inline editing
+ * Parse text format into structured goals
+ */
+function parseGoalsText(text: string): { macrocycle: MacrocycleGoal; mesocycles: MesocycleMilestone[] } | null {
+  try {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    
+    let macrocycle: MacrocycleGoal | null = null;
+    const mesocycles: MesocycleMilestone[] = [];
+    
+    let currentSection: 'macro' | 'meso' | null = null;
+    let currentMeso: Partial<MesocycleMilestone> | null = null;
+    let mesoIndex = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Section headers
+      if (line === 'MACRO GOAL:') {
+        currentSection = 'macro';
+        macrocycle = {
+          name: '',
+          value: '',
+          promisedOutcome: '',
+          durationWeeks: 24,
+          startDate: '',
+          endDate: ''
+        };
+        continue;
+      }
+      
+      if (line === 'MESOCYCLES:') {
+        currentSection = 'meso';
+        continue;
+      }
+      
+      // Check for new mesocycle
+      const phaseMatch = line.match(/^Phase \d+:$/);
+      if (phaseMatch && currentSection === 'meso') {
+        // Save previous mesocycle if exists
+        if (currentMeso && currentMeso.name) {
+          mesocycles.push({
+            id: `meso_${Date.now()}_${mesoIndex}`,
+            name: currentMeso.name || '',
+            value: currentMeso.value || '',
+            focus: currentMeso.focus || '',
+            durationWeeks: currentMeso.durationWeeks || 4,
+            startDate: currentMeso.startDate || '',
+            endDate: currentMeso.endDate || ''
+          });
+          mesoIndex++;
+        }
+        // Start new mesocycle
+        currentMeso = {};
+        continue;
+      }
+      
+      // Parse field values
+      if (currentSection === 'macro' && macrocycle) {
+        if (line.startsWith('Name:')) {
+          macrocycle.name = line.substring(5).trim();
+        } else if (line.startsWith('Description:')) {
+          macrocycle.value = line.substring(12).trim();
+        } else if (line.startsWith('Duration:')) {
+          const weeks = parseInt(line.substring(9).trim());
+          if (!isNaN(weeks)) macrocycle.durationWeeks = weeks;
+        }
+      } else if (currentSection === 'meso' && currentMeso) {
+        if (line.startsWith('Name:')) {
+          currentMeso.name = line.substring(5).trim();
+        } else if (line.startsWith('Focus:')) {
+          currentMeso.focus = line.substring(6).trim();
+        } else if (line.startsWith('Duration:')) {
+          const weeks = parseInt(line.substring(9).trim());
+          if (!isNaN(weeks)) currentMeso.durationWeeks = weeks;
+        } else if (line.startsWith('Description:')) {
+          currentMeso.value = line.substring(12).trim();
+        }
+      }
+    }
+    
+    // Save last mesocycle
+    if (currentMeso && currentMeso.name) {
+      mesocycles.push({
+        id: `meso_${Date.now()}_${mesoIndex}`,
+        name: currentMeso.name || '',
+        value: currentMeso.value || '',
+        focus: currentMeso.focus || '',
+        durationWeeks: currentMeso.durationWeeks || 4,
+        startDate: currentMeso.startDate || '',
+        endDate: currentMeso.endDate || ''
+      });
+    }
+    
+    if (!macrocycle || mesocycles.length === 0) {
+      return null;
+    }
+    
+    return { macrocycle, mesocycles };
+  } catch (error) {
+    console.error('Failed to parse goals text:', error);
+    return null;
+  }
+}
+
+/**
+ * Convert structured goals to text format
+ */
+function goalsToText(macrocycle: MacrocycleGoal, mesocycles: MesocycleMilestone[]): string {
+  let text = 'MACRO GOAL:\n';
+  text += `Name: ${macrocycle.name}\n`;
+  text += `Description: ${macrocycle.value}\n`;
+  text += `Duration: ${macrocycle.durationWeeks}\n`;
+  text += '\n';
+  text += 'MESOCYCLES:\n\n';
+  
+  mesocycles.forEach((meso, index) => {
+    text += `Phase ${index + 1}:\n`;
+    text += `Name: ${meso.name}\n`;
+    text += `Focus: ${meso.focus}\n`;
+    text += `Duration: ${meso.durationWeeks}\n`;
+    text += `Description: ${meso.value}\n`;
+    if (index < mesocycles.length - 1) {
+      text += '\n';
+    }
+  });
+  
+  return text;
+}
+
+/**
+ * Goals review component with direct text editing
  */
 export function GoalsReview({ plan, onBack }: GoalsReviewProps) {
   const { approveGoals, regenerateGoals, updateGoals, generating, error, clearError } = useAICoachStore();
   
-  // Local state for inline editing
-  const [macrocycle, setMacrocycle] = useState<MacrocycleGoal>(plan.macrocycleGoal);
-  const [mesocycles, setMesocycles] = useState<MesocycleMilestone[]>(plan.mesocycleMilestones);
-  const [hasEdits, setHasEdits] = useState(false);
+  // Convert initial plan to text format
+  const [goalsText, setGoalsText] = useState(() => 
+    goalsToText(plan.macrocycleGoal, plan.mesocycleMilestones)
+  );
+  const [parseError, setParseError] = useState<string | null>(null);
   
   const [showRegenerate, setShowRegenerate] = useState(false);
   const [feedback, setFeedback] = useState('');
   
-  const [isEditingMacro, setIsEditingMacro] = useState(false);
-  const [editingMesoIndex, setEditingMesoIndex] = useState<number | null>(null);
+  // Update text when plan changes (e.g., after regeneration)
+  useEffect(() => {
+    setGoalsText(goalsToText(plan.macrocycleGoal, plan.mesocycleMilestones));
+  }, [plan.macrocycleGoal, plan.mesocycleMilestones]);
 
   const handleApprove = async () => {
-    // Save any edits first
-    if (hasEdits) {
-      await updateGoals({
-        macrocycleGoal: macrocycle,
-        mesocycleMilestones: mesocycles,
-      });
+    // Parse and validate text before approving
+    const parsed = parseGoalsText(goalsText);
+    
+    if (!parsed) {
+      setParseError('Could not parse goals. Please check the format.');
+      return;
     }
+    
+    setParseError(null);
+    
+    // Save edits first
+    await updateGoals({
+      macrocycleGoal: {
+        ...plan.macrocycleGoal,
+        ...parsed.macrocycle,
+        // Preserve dates
+        startDate: plan.macrocycleGoal.startDate,
+        endDate: plan.macrocycleGoal.endDate,
+        promisedOutcome: plan.macrocycleGoal.promisedOutcome
+      },
+      mesocycleMilestones: parsed.mesocycles.map((meso, index) => ({
+        ...meso,
+        // Preserve or calculate dates
+        startDate: plan.mesocycleMilestones[index]?.startDate || '',
+        endDate: plan.mesocycleMilestones[index]?.endDate || ''
+      }))
+    });
     
     // Then approve
     await approveGoals();
@@ -65,18 +214,6 @@ export function GoalsReview({ plan, onBack }: GoalsReviewProps) {
     setFeedback('');
     setShowRegenerate(false);
   };
-  
-  const updateMacrocycle = (updates: Partial<MacrocycleGoal>) => {
-    setMacrocycle(prev => ({ ...prev, ...updates }));
-    setHasEdits(true);
-  };
-  
-  const updateMesocycle = (index: number, updates: Partial<MesocycleMilestone>) => {
-    const updated = [...mesocycles];
-    updated[index] = { ...updated[index], ...updates };
-    setMesocycles(updated);
-    setHasEdits(true);
-  };
 
   return (
     <div className="space-y-6">
@@ -85,7 +222,7 @@ export function GoalsReview({ plan, onBack }: GoalsReviewProps) {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Review Your Fitness Goals</h1>
           <p className="text-muted-foreground mt-1">
-            AI-generated goals based on your profile and input
+            Edit directly in the text below
           </p>
         </div>
         <Badge variant="outline" className="text-sm">
@@ -106,131 +243,42 @@ export function GoalsReview({ plan, onBack }: GoalsReviewProps) {
         </Alert>
       )}
 
-      {/* Macrocycle Goal - Compact with Edit Button */}
+      {/* Parse Error Alert */}
+      {parseError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{parseError}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Format Instructions */}
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          <strong>How to edit:</strong> Edit the text directly below. To add mesocycles, copy the "Phase X:" format. 
+          To remove, delete the entire phase section. Keep the format consistent: "Name:", "Description:", "Duration:", "Focus:".
+        </AlertDescription>
+      </Alert>
+
+      {/* Text Editor */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
-              <Target className="h-5 w-5" />
-              <span>{macrocycle.name}</span>
-            </CardTitle>
-            <div className="flex items-center space-x-2">
-              <Badge variant="outline">{macrocycle.durationWeeks} weeks</Badge>
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={() => setIsEditingMacro(!isEditingMacro)}
-              >
-                {isEditingMacro ? <ChevronUp className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
-              </Button>
-            </div>
-          </div>
+          <CardTitle>Goals Editor</CardTitle>
           <CardDescription>
-            {new Date(plan.macrocycleGoal.startDate).toLocaleDateString()} - {new Date(plan.macrocycleGoal.endDate).toLocaleDateString()}
+            Edit your macro goal and training phases directly
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {isEditingMacro ? (
-            <>
-              <Input
-                value={macrocycle.name}
-                onChange={(e) => updateMacrocycle({ name: e.target.value })}
-                className="font-medium"
-                placeholder="Goal name"
-              />
-              <Textarea
-                value={macrocycle.value}
-                onChange={(e) => updateMacrocycle({ value: e.target.value })}
-                rows={2}
-                className="resize-none text-sm"
-                placeholder="Goal description"
-              />
-              <Input
-                type="number"
-                value={macrocycle.durationWeeks}
-                onChange={(e) => updateMacrocycle({ durationWeeks: parseInt(e.target.value) || 24 })}
-                min={4}
-                max={52}
-                className="w-32"
-              />
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">{macrocycle.value}</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Mesocycle Milestones - Compact with Inline Edit */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Calendar className="h-5 w-5" />
-            <span>Training Phases ({mesocycles.length})</span>
-          </CardTitle>
-        </CardHeader>
         <CardContent>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {mesocycles.map((meso, index) => (
-              <Card key={meso.id} className="border-dashed">
-                <CardContent className="p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Badge variant="outline" className="text-xs">Phase {index + 1}</Badge>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      className="h-6 w-6 p-0"
-                      onClick={() => setEditingMesoIndex(editingMesoIndex === index ? null : index)}
-                    >
-                      {editingMesoIndex === index ? <ChevronUp className="h-3 w-3" /> : <Edit className="h-3 w-3" />}
-                    </Button>
-                  </div>
-                  
-                  {editingMesoIndex === index ? (
-                    <div className="space-y-2">
-                      <Input
-                        value={meso.name}
-                        onChange={(e) => updateMesocycle(index, { name: e.target.value })}
-                        className="font-medium text-sm"
-                        placeholder="Phase name"
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          value={meso.focus}
-                          onChange={(e) => updateMesocycle(index, { focus: e.target.value })}
-                          className="text-xs"
-                          placeholder="Focus"
-                        />
-                        <Input
-                          type="number"
-                          value={meso.durationWeeks}
-                          onChange={(e) => updateMesocycle(index, { durationWeeks: parseInt(e.target.value) || 4 })}
-                          min={1}
-                          max={12}
-                          className="text-xs"
-                          placeholder="Weeks"
-                        />
-                      </div>
-                      <Textarea
-                        value={meso.value}
-                        onChange={(e) => updateMesocycle(index, { value: e.target.value })}
-                        rows={2}
-                        className="text-xs resize-none"
-                        placeholder="Description"
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="font-medium text-sm">{meso.name}</h4>
-                      <p className="text-xs text-muted-foreground">
-                        {meso.durationWeeks} weeks • {meso.focus}
-                      </p>
-                      <p className="text-xs line-clamp-2">{meso.value}</p>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <Textarea
+            value={goalsText}
+            onChange={(e) => {
+              setGoalsText(e.target.value);
+              setParseError(null);
+            }}
+            rows={20}
+            className="font-mono text-sm resize-none"
+            placeholder="Edit your goals here..."
+          />
         </CardContent>
       </Card>
 
@@ -266,16 +314,6 @@ export function GoalsReview({ plan, onBack }: GoalsReviewProps) {
         </Card>
       )}
 
-      {/* Help Text */}
-      {hasEdits && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            You've made changes. Click "Approve Goals" to save and continue.
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-3 justify-between">
         <Button 
@@ -301,11 +339,10 @@ export function GoalsReview({ plan, onBack }: GoalsReviewProps) {
             disabled={generating}
           >
             <CheckCircle className="h-4 w-4 mr-2" />
-            {hasEdits ? 'Save & Approve Goals' : 'Approve Goals'}
+            Approve Goals
           </Button>
         </div>
       </div>
     </div>
   );
 }
-
