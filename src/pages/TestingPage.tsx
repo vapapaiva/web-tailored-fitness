@@ -160,43 +160,12 @@ export function TestingPage() {
                   onClick={async () => {
                     if (!user) return;
                     try {
-                      // Smart deletion: Handle ALL AI Coach workouts (not just current microcycle)
-                      let deletedCount = 0;
-                      let preservedCount = 0;
-                      
-                      // Get ALL AI Coach workouts
-                      const allAIWorkouts = workoutsStore.workouts.filter(w => w.source === 'ai-coach');
-                      
-                      for (const workout of allAIWorkouts) {
-                        // Check if user has made any progress
-                        const hasProgress = 
-                          workout.exercises.some(ex => ex.sets.some(set => set.completed === true)) ||
-                          workout.hasManualChanges === true ||
-                          workout.status === 'completed';
-                        
-                        if (hasProgress) {
-                          // PRESERVE: Detach from microcycle but keep the workout
-                          await workoutsStore.updateWorkout(workout.id, {
-                            aiCoachContext: undefined // Remove microcycle association
-                          });
-                          preservedCount++;
-                        } else {
-                          // DELETE: User hasn't touched this workout
-                          await workoutsStore.deleteWorkout(workout.id);
-                          deletedCount++;
-                        }
-                      }
-                      
                       // Delete the AI plan document
                       const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
                       await deleteDoc(planRef);
                       await loadAIPlan();
                       
-                      alert(
-                        `AI Coach plan deleted!\n\n` +
-                        `✅ Deleted: ${deletedCount} untouched workout(s)\n` +
-                        `💪 Preserved: ${preservedCount} workout(s) with progress (now deletable manually)`
-                      );
+                      alert('AI Coach plan deleted! AI workouts remain in Workouts page (delete manually if needed).');
                     } catch (error) {
                       console.error('Failed to delete AI plan:', error);
                       alert('Failed to delete AI plan');
@@ -207,78 +176,44 @@ export function TestingPage() {
                   disabled={!aiPlan}
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Entire AI Plan
+                  Delete AI Plan
                 </Button>
                 
                 <Button 
                   onClick={async () => {
-                    if (!user || !aiPlan?.currentMicrocycle) return;
+                    if (!user || !aiPlan) return;
                     try {
-                      // Smart deletion: Only delete workouts with no progress
-                      const microcycleWorkouts = workoutsStore.workouts.filter(w => 
-                        aiPlan.currentMicrocycle?.workoutIds.includes(w.id)
-                      );
-                      
-                      let deletedCount = 0;
-                      let preservedCount = 0;
-                      
-                      for (const workout of microcycleWorkouts) {
-                        // Check if user has made any progress (same logic as regenerateMicrocycle)
-                        const hasProgress = 
-                          workout.exercises.some(ex => ex.sets.some(set => set.completed === true)) ||
-                          workout.hasManualChanges === true ||
-                          workout.status === 'completed';
-                        
-                        if (hasProgress) {
-                          // PRESERVE: Detach from microcycle but keep the workout
-                          await workoutsStore.updateWorkout(workout.id, {
-                            aiCoachContext: undefined // Remove microcycle association
-                          });
-                          preservedCount++;
-                        } else {
-                          // DELETE: User hasn't touched this workout
-                          await workoutsStore.deleteWorkout(workout.id);
-                          deletedCount++;
-                        }
-                      }
-                      
-                      // Clear microcycle reference
+                      // Clear current suggestion only (not plan)
                       const planRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
                       await updateDoc(planRef, {
-                        currentMicrocycle: null,
+                        currentSuggestion: null,
                         status: 'goals-approved',
                         updatedAt: serverTimestamp()
                       });
                       await loadAIPlan();
                       
-                      alert(
-                        `AI Coach microcycle cleared!\n\n` +
-                        `✅ Deleted: ${deletedCount} untouched workout(s)\n` +
-                        `💪 Preserved: ${preservedCount} workout(s) with progress (now deletable)\n` +
-                        `Goals preserved.`
-                      );
+                      alert('Current suggestions cleared. Goals preserved.');
                     } catch (error) {
-                      console.error('Failed to clear microcycle:', error);
-                      alert('Failed to clear microcycle');
+                      console.error('Failed to clear suggestions:', error);
+                      alert('Failed to clear suggestions');
                     }
                   }}
                   variant="outline"
                   className="w-full"
-                  disabled={!aiPlan?.currentMicrocycle}
+                  disabled={!aiPlan?.currentSuggestion}
                 >
-                  Clear Microcycle Only
+                  Clear Current Suggestions
                 </Button>
                 
                 <Button 
                   onClick={async () => {
                     if (!user) return;
                     try {
-                      // Smart cleanup: Delete AI workouts without progress, detach those with progress
+                      // Delete untouched AI workouts only
                       const aiWorkouts = workoutsStore.workouts.filter(w => w.source === 'ai-coach');
                       
                       let deletedCount = 0;
                       let preservedCount = 0;
-                      let alreadyDetachedCount = 0;
                       
                       for (const workout of aiWorkouts) {
                         // Check if user has made any progress
@@ -288,28 +223,17 @@ export function TestingPage() {
                           workout.status === 'completed';
                         
                         if (hasProgress) {
-                          // Check if already detached
-                          if (!workout.aiCoachContext) {
-                            alreadyDetachedCount++;
-                          } else {
-                            // PRESERVE: Detach from microcycle but keep the workout
-                            await workoutsStore.updateWorkout(workout.id, {
-                              aiCoachContext: undefined
-                            });
                             preservedCount++;
-                          }
                         } else {
-                          // DELETE: User hasn't touched this workout
                           await workoutsStore.deleteWorkout(workout.id);
                           deletedCount++;
                         }
                       }
                       
                       alert(
-                        `Smart AI Workouts Cleanup Complete!\n\n` +
+                        `AI Workouts Cleanup Complete!\n\n` +
                         `✅ Deleted: ${deletedCount} untouched workout(s)\n` +
-                        `💪 Detached: ${preservedCount} workout(s) with progress\n` +
-                        `ℹ️ Already detached: ${alreadyDetachedCount} workout(s)`
+                        `💪 Preserved: ${preservedCount} workout(s) with progress`
                       );
                     } catch (error) {
                       console.error('Failed to cleanup AI workouts:', error);
@@ -319,7 +243,7 @@ export function TestingPage() {
                   variant="outline"
                   className="w-full"
                 >
-                  Smart Cleanup AI Workouts
+                  Cleanup Untouched AI Workouts
                 </Button>
                 
                 <Button 
@@ -347,7 +271,7 @@ export function TestingPage() {
               
               <p className="text-sm text-muted-foreground">
                 {aiPlan 
-                  ? `AI Plan Status: ${aiPlan.status}, Week: ${aiPlan.currentMicrocycle?.week || 'N/A'}`
+                  ? `AI Plan Status: ${aiPlan.status}${aiPlan.currentSuggestion ? ', Has pending suggestions' : ''}`
                   : 'No AI plan exists'
                 }
               </p>

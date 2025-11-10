@@ -17,7 +17,6 @@ import {
 } from '@dnd-kit/core';
 import type { WorkoutDocument } from '@/types/workout';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
-import { useAICoachStore } from '@/stores/aiCoachStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,7 +67,6 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
   // Subscribe to workouts array to ensure reactivity
   const workouts = useWorkoutsStore(state => state.workouts);
   const { updateWorkout } = useWorkoutsStore();
-  const { currentPlan: aiPlan } = useAICoachStore();
   const getPastWorkouts = useWorkoutsStore(state => state.getPastWorkouts);
   const getCurrentWeekWorkouts = useWorkoutsStore(state => state.getCurrentWeekWorkouts);
   const getLaterWorkouts = useWorkoutsStore(state => state.getLaterWorkouts);
@@ -138,17 +136,7 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
       
       console.log('[PlannedSection DND] Dropped on weekday:', { targetDayOfWeek, targetDate });
       
-      // Validate for AI Coach workouts
-      if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
-        if (draggedWorkout.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
-          const { start, end } = aiPlan.currentMicrocycle.dateRange;
-          if (targetDate < start || targetDate > end) {
-            setDndError(`Cannot move AI Coach workout outside microcycle range (${start} to ${end})`);
-            setTimeout(() => setDndError(''), 5000);
-            return;
-          }
-        }
-      }
+      // AI Coach workouts can now be moved freely (no restrictions)
       
       // Update to weekday
       const targetDayWorkouts = currentWeekWorkouts.filter(w => w.dayOfWeek === targetDayOfWeek && w.id !== draggedWorkout.id);
@@ -169,13 +157,7 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
     if (overId === 'without-date') {
       console.log('[PlannedSection DND] Dropped on without-date section');
       
-      // Prevent AI Coach workouts from losing their date
-      if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext) {
-        console.log('[PlannedSection DND] Blocked: AI workout cannot be without date');
-        setDndError('AI Coach workouts must have a date to stay aligned with your training plan');
-        setTimeout(() => setDndError(''), 5000);
-        return;
-      }
+      // AI Coach workouts can now have their date cleared (no restrictions)
       
       // Drop to "Without Date" - clear the date
       console.log('[PlannedSection DND] Clearing date for manual workout');
@@ -190,15 +172,7 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
     if (['past', 'later'].includes(overId)) {
       console.log('[PlannedSection DND] Dropped on past/later - showing date picker');
       
-      // Validate AI Coach workouts can't be moved to these sections with date picker
-      // They must stay within microcycle range
-      if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
-        if (draggedWorkout.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
-          setDndError('AI Coach workouts must stay within the current week of the microcycle');
-          setTimeout(() => setDndError(''), 5000);
-          return;
-        }
-      }
+      // AI Coach workouts can now be moved to any section (no restrictions)
       
       // From weekday to past/later - ask for specific date
       setPendingWorkout(draggedWorkout);
@@ -215,17 +189,7 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
       
       console.log('[PlannedSection DND] Dropped on workout in current week:', { targetDate });
       
-      // Validate for AI Coach workouts
-      if (draggedWorkout.source === 'ai-coach' && draggedWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
-        if (draggedWorkout.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
-          const { start, end } = aiPlan.currentMicrocycle.dateRange;
-          if (targetDate < start || targetDate > end) {
-            setDndError(`Cannot move AI Coach workout outside microcycle range (${start} to ${end})`);
-            setTimeout(() => setDndError(''), 5000);
-            return;
-          }
-        }
-      }
+      // AI Coach workouts can now be moved freely (no restrictions)
       
       await updateWorkout(draggedWorkout.id, {
         date: targetDate,
@@ -240,18 +204,7 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
   const handleDatePickerConfirm = async () => {
     if (!pendingWorkout || !pendingDate) return;
     
-    // Validate for AI Coach workouts
-    if (pendingWorkout.source === 'ai-coach' && pendingWorkout.aiCoachContext && aiPlan?.currentMicrocycle) {
-      if (pendingWorkout.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
-        const { start, end } = aiPlan.currentMicrocycle.dateRange;
-        if (pendingDate < start || pendingDate > end) {
-          setDndError(`Date must be within microcycle range: ${start} to ${end}`);
-          setTimeout(() => setDndError(''), 5000);
-          // Don't close dialog, let user fix the date
-          return;
-        }
-      }
-    }
+    // AI Coach workouts can now be moved to any date (no restrictions)
     
     const newDayOfWeek = new Date(pendingDate).getDay();
     
@@ -441,14 +394,7 @@ export function PlannedSection({ onAddWorkout }: PlannedSectionProps) {
               value={pendingDate}
               onChange={(e) => setPendingDate(e.target.value)}
               className="w-full"
-              min={pendingWorkout?.source === 'ai-coach' && aiPlan?.currentMicrocycle ? aiPlan.currentMicrocycle.dateRange.start : undefined}
-              max={pendingWorkout?.source === 'ai-coach' && aiPlan?.currentMicrocycle ? aiPlan.currentMicrocycle.dateRange.end : undefined}
             />
-            {pendingWorkout?.source === 'ai-coach' && aiPlan?.currentMicrocycle && (
-              <p className="text-xs text-purple-600 dark:text-purple-400">
-                AI Coach workout • Must be between {aiPlan.currentMicrocycle.dateRange.start} and {aiPlan.currentMicrocycle.dateRange.end}
-              </p>
-            )}
           </div>
           <Alert>
             <AlertCircle className="h-4 w-4" />

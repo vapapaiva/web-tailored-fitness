@@ -8,7 +8,7 @@ import type { DateRange } from './fitness';
 /**
  * AI Plan status
  */
-export type AIPlanStatus = 'goals-draft' | 'goals-approved' | 'active' | 'paused';
+export type AIPlanStatus = 'goals-draft' | 'goals-approved' | 'active' | 'paused' | 'suggestion-pending';
 
 /**
  * Macrocycle goal - 6-month overarching fitness goal
@@ -73,6 +73,9 @@ export interface AIPlan {
   
   // Phase 2: Current Microcycle (optional until workouts generated)
   currentMicrocycle?: MicrocycleReference;
+  
+  // Phase 2b: Current Suggestion (for "coach suggests" flow)
+  currentSuggestion?: MicrocycleSuggestion;
   
   // History
   completedMicrocycles: Array<{
@@ -155,6 +158,34 @@ export interface MicrocycleGenerationResponse {
   };
   explanation: string;
   generated_at: string;
+}
+
+/**
+ * Workout suggestion from AI (for flexible "coach suggests" system)
+ */
+export interface WorkoutSuggestion {
+  name: string;
+  date: string; // ISO date string (YYYY-MM-DD)
+  dayOfWeek: number;
+  type: string;
+  focus: string;
+  value: string;
+  exercises: any[]; // Exercise array
+  estimatedDuration: number;
+  checkIns?: {
+    greenFlags: string[];
+    redFlags: string[];
+  };
+}
+
+/**
+ * Microcycle suggestion - AI's proposed workouts (not yet added to plan)
+ */
+export interface MicrocycleSuggestion {
+  assessment: string; // AI's assessment of current plan
+  suggestedWorkouts: WorkoutSuggestion[]; // Can be empty if plan is good
+  generated_at: string;
+  weekDateRange: DateRange;
 }
 
 /**

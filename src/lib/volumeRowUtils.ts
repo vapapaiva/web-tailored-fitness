@@ -42,56 +42,36 @@ export function getVolumeRows(exercise: Exercise): VolumeRow[] {
     .map(([volumeRowId, group]) => ({ volumeRowId, ...group }))
     .sort((a, b) => Math.min(...a.indices) - Math.min(...b.indices));
 
-  // Process each group: group identical sets together, split different ones
+  // Process each group: create ONE volume row per volumeRowId
+  // Use AVERAGE values for display (user can edit individual sets if needed)
   sortedGroups.forEach((group) => {
-    // Group sets within this volumeRowId by their actual values
-    const valueGroups: { [key: string]: { sets: ExerciseSet[], indices: number[] } } = {};
+    const firstSet = group.sets[0];
     
-    group.sets.forEach((set, setIndexInGroup) => {
-      const actualIndex = group.indices[setIndexInGroup];
-      
-      // Create a key based on all relevant values
-      const valueKey = JSON.stringify({
-        volumeType: set.volumeType,
-        reps: set.reps,
-        weight: set.weight,
-        weightUnit: set.weightUnit,
-        duration: set.duration,
-        notes: set.notes,
-        distanceUnit: set.distanceUnit
-      });
-      
-      if (!valueGroups[valueKey]) {
-        valueGroups[valueKey] = { sets: [], indices: [] };
-      }
-      valueGroups[valueKey].sets.push(set);
-      valueGroups[valueKey].indices.push(actualIndex);
-    });
+    // Calculate averages for this volume row group
+    const totalSets = group.sets.length;
+    const avgReps = Math.round(group.sets.reduce((sum, s) => sum + s.reps, 0) / totalSets);
+    const avgWeight = group.sets.reduce((sum, s) => sum + (s.weight || 0), 0) / totalSets;
+    const avgDuration = group.sets.reduce((sum, s) => sum + (s.duration || 0), 0) / totalSets;
     
-    // Create volume rows for each value group
-    Object.values(valueGroups).forEach(valueGroup => {
-      const firstSet = valueGroup.sets[0];
-      
-      const volumeRow: VolumeRow = {
-        type: (firstSet.volumeType || 'sets-reps') as VolumeRow['type'],
-        totalSets: valueGroup.sets.length,
-        reps: firstSet.reps,
-        setIndices: valueGroup.indices
-      };
+    const volumeRow: VolumeRow = {
+      type: (firstSet.volumeType || 'sets-reps') as VolumeRow['type'],
+      totalSets: totalSets,
+      reps: avgReps,
+      setIndices: group.indices
+    };
 
-      if (firstSet.volumeType === 'sets-reps-weight') {
-        volumeRow.weight = firstSet.weight;
-        volumeRow.weightUnit = firstSet.weightUnit;
-      } else if (firstSet.volumeType === 'duration') {
-        volumeRow.duration = (firstSet.duration || 0) / 60; // Convert to minutes
-      } else if (firstSet.volumeType === 'distance') {
-        const distance = parseFloat(firstSet.notes?.replace(/[^\d.]/g, '') || '0');
-        volumeRow.distance = distance;
-        volumeRow.distanceUnit = firstSet.distanceUnit;
-      }
+    if (firstSet.volumeType === 'sets-reps-weight') {
+      volumeRow.weight = avgWeight;
+      volumeRow.weightUnit = firstSet.weightUnit;
+    } else if (firstSet.volumeType === 'duration') {
+      volumeRow.duration = avgDuration / 60; // Convert to minutes
+    } else if (firstSet.volumeType === 'distance') {
+      const distance = parseFloat(firstSet.notes?.replace(/[^\d.]/g, '') || '0');
+      volumeRow.distance = distance;
+      volumeRow.distanceUnit = firstSet.distanceUnit;
+    }
 
-      volumeRows.push(volumeRow);
-    });
+    volumeRows.push(volumeRow);
   });
 
   return volumeRows;

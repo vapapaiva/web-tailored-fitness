@@ -1,6 +1,6 @@
 /**
- * Microcycle Generation Flow - Generate first week of workouts
- * Phase 2 of AI Coach setup
+ * Microcycle Generation Flow - Generate workout suggestions (not auto-added)
+ * Phase 2 of AI Coach - Flexible "coach suggests" system
  */
 
 import { useState, useEffect } from 'react';
@@ -10,74 +10,81 @@ import { useWorkoutsStore } from '@/stores/workoutsStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { MicrocyclePreview } from './MicrocyclePreview';
-import { GoalsEditor } from './GoalsEditor';
-import { Sparkles, Dumbbell, AlertCircle, Loader2, CheckCircle } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { WorkoutSuggestionsDialog } from './WorkoutSuggestionsDialog';
+import { PromptEditor } from './PromptEditor';
+import { Sparkles, AlertCircle, Loader2, Target, Info } from 'lucide-react';
 import { calculateInitialWeekRange } from '@/lib/dateUtils';
 import type { MicrocycleGenerationRequest } from '@/types/aiCoach';
+import type { CustomPromptConfig } from '@/types/profile';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, remoteConfig } from '@/lib/firebase';
+import { getValue, fetchAndActivate } from 'firebase/remote-config';
 
-type Step = 'ready' | 'generating' | 'review' | 'editGoals';
+interface MicrocycleGenerationFlowProps {
+  weekNumber?: number; // Optional week number (for regeneration from dashboard)
+  onClose?: () => void; // Optional close handler (when opened from dashboard)
+}
 
 /**
  * Microcycle generation flow component
  */
-export function MicrocycleGenerationFlow() {
+export function MicrocycleGenerationFlow({ weekNumber, onClose }: MicrocycleGenerationFlowProps = {}) {
   const { user } = useAuthStore();
-  const { currentPlan, generating, error, generateMicrocycle, approveMicrocycle, clearError } = useAICoachStore();
-  const workouts = useWorkoutsStore(state => state.workouts);
+  const { 
+    currentPlan, 
+    generating, 
+    error, 
+    loading,
+    customMicrocyclePrompt,
+    generateMicrocycle,
+    acceptSuggestedWorkouts,
+    saveCustomMicrocyclePrompt,
+    resetMicrocyclePromptToDefault,
+    clearError 
+  } = useAICoachStore();
   
-  const [step, setStep] = useState<Step>('ready');
-  const [waitingForWorkouts, setWaitingForWorkouts] = useState(false);
+  const workoutsStore = useWorkoutsStore();
+  
+  const [customFeedback, setCustomFeedback] = useState('');
+  const [defaultPrompt, setDefaultPrompt] = useState<CustomPromptConfig | null>(null);
+  const [editingPrompt, setEditingPrompt] = useState<CustomPromptConfig | null>(null);
+  const [showSuggestionsDialog, setShowSuggestionsDialog] = useState(false);
 
-  // Wait for workouts to appear after generation
+  // Load default prompt
   useEffect(() => {
-    if (step === 'generating' && currentPlan?.currentMicrocycle && !generating) {
-      const expectedIds = currentPlan.currentMicrocycle.workoutIds;
-      const currentIds = workouts.map(w => w.id);
-      const allPresent = expectedIds.every(id => currentIds.includes(id));
-      
-      console.log('[MicrocycleFlow] Checking workout presence:', {
-        expected: expectedIds.length,
-        found: expectedIds.filter(id => currentIds.includes(id)).length,
-        allPresent
-      });
-      
-      if (allPresent) {
-        console.log('[MicrocycleFlow] All workouts present, showing review');
-        setStep('review');
-        setWaitingForWorkouts(false);
-      } else if (!waitingForWorkouts) {
-        // Start waiting
-        setWaitingForWorkouts(true);
-        console.log('[MicrocycleFlow] Waiting for workouts to sync...');
+    const loadDefaultPrompt = async () => {
+      try {
+        await fetchAndActivate(remoteConfig);
+        const promptValue = getValue(remoteConfig, 'prompts_ai_coach_workout_generation');
+        const promptString = promptValue.asString();
         
-        // Timeout after 5 seconds
-        setTimeout(() => {
-          const currentPlanState = useAICoachStore.getState().currentPlan;
-          const workoutsState = useWorkoutsStore.getState().workouts;
-          if (currentPlanState?.currentMicrocycle) {
-            const stillMissing = currentPlanState.currentMicrocycle.workoutIds.filter(
-              id => !workoutsState.find(w => w.id === id)
-            );
-            if (stillMissing.length > 0) {
-              console.warn('[MicrocycleFlow] Timeout: Still missing workouts:', stillMissing);
-            }
-          }
-          // Show review anyway after timeout
-          setStep('review');
-          setWaitingForWorkouts(false);
-        }, 5000);
+        if (promptString) {
+          const promptConfig = JSON.parse(promptString);
+          const prompt = {
+            systemPrompt: promptConfig.system_prompt,
+            userPromptTemplate: promptConfig.user_prompt_template
+          };
+          setDefaultPrompt(prompt);
+          setEditingPrompt(customMicrocyclePrompt || prompt);
+        }
+      } catch (error) {
+        console.error('Failed to load default prompt:', error);
       }
+    };
+    loadDefaultPrompt();
+  }, [customMicrocyclePrompt]);
+
+  // Show suggestions dialog when generation completes
+  useEffect(() => {
+    if (currentPlan?.currentSuggestion && !generating) {
+      setShowSuggestionsDialog(true);
     }
-  }, [step, generating, currentPlan, workouts, waitingForWorkouts]);
+  }, [currentPlan?.currentSuggestion, generating]);
 
   const handleGenerate = async () => {
     if (!user || !currentPlan) return;
-
-    setStep('generating');
-    setWaitingForWorkouts(false);
 
     // Get user profile
     const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -92,52 +99,103 @@ export function MicrocycleGenerationFlow() {
       macrocycleGoal: currentPlan.macrocycleGoal,
       mesocycleMilestones: currentPlan.mesocycleMilestones,
       currentDate: new Date().toISOString(),
-      weekNumber: 1,
+      weekNumber: weekNumber || 1,
       weekDateRange,
+      customFeedback: customFeedback || undefined,
     };
 
     await generateMicrocycle(request);
-    
-    // Check if generation succeeded
-    const { error: genError } = useAICoachStore.getState();
-    if (genError) {
-      setStep('ready');
-    }
-    // If no error, useEffect will handle transition to 'review' when workouts appear
   };
 
-  const handleApprove = async () => {
-    await approveMicrocycle();
+  const handlePromptSaved = async (prompt: CustomPromptConfig) => {
+    await saveCustomMicrocyclePrompt(prompt);
+    setEditingPrompt(prompt);
   };
 
-  // Edit goals
-  if (step === 'editGoals' && currentPlan) {
+  const handlePromptReset = async () => {
+    await resetMicrocyclePromptToDefault();
+    setEditingPrompt(defaultPrompt);
+  };
+
+  const handleAcceptWorkout = async (index: number) => {
+    await acceptSuggestedWorkouts([index]);
+  };
+
+  const handleAcceptAll = async () => {
+    if (!currentPlan?.currentSuggestion) return;
+    const allIndexes = currentPlan.currentSuggestion.suggestedWorkouts.map((_, i) => i);
+    await acceptSuggestedWorkouts(allIndexes);
+  };
+
+  const handleRegenerate = async (feedback: string) => {
+    setCustomFeedback(feedback);
+    setShowSuggestionsDialog(false);
+    await handleGenerate();
+  };
+
+  const handleCloseSuggestions = () => {
+    setShowSuggestionsDialog(false);
+    if (onClose) onClose();
+  };
+
+  if (!editingPrompt || !defaultPrompt) {
     return (
-      <div className="container mx-auto p-6 max-w-6xl">
-        <GoalsEditor
-          plan={currentPlan}
-          onSave={() => setStep('ready')}
-          onCancel={() => setStep('ready')}
-        />
+      <div className="container mx-auto p-6 max-w-4xl">
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center space-y-4">
+              <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+              <p className="text-sm text-muted-foreground">Loading configuration...</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  // Ready to generate
-  if (step === 'ready') {
+  // Get planned workouts for context
+  const weekDateRange = calculateInitialWeekRange(new Date());
+  const plannedWorkouts = workoutsStore.workouts.filter(w => {
+    if (!w.date || w.status === 'completed') return false;
+    const workoutDate = new Date(w.date);
+    const startDate = new Date(weekDateRange.start);
+    const endDate = new Date(weekDateRange.end);
+    return workoutDate >= startDate && workoutDate <= endDate;
+  });
+
+  const placeholders = [
+    { placeholder: 'USER_PROFILE', description: 'Complete user profile data' },
+    { placeholder: 'MACROCYCLE', description: 'Your 6-month macrocycle goal' },
+    { placeholder: 'MESOCYCLE', description: 'Current mesocycle phase' },
+    { placeholder: 'CURRENT_DATE', description: 'Current date (ISO format)' },
+    { placeholder: 'NEXT_WEEK_NUMBER', description: 'Week number in plan' },
+    { placeholder: 'WEEK_DATE_RANGE', description: 'Date range for the microcycle' },
+    { placeholder: 'PLANNED_WORKOUTS', description: 'Already planned workouts for this period' },
+    { placeholder: 'CUSTOM_PROMPT', description: 'Your custom feedback/instructions' },
+  ];
+
+  const populatedData = user?.profile && currentPlan ? {
+    USER_PROFILE: JSON.stringify(user.profile, null, 2),
+    MACROCYCLE: currentPlan.macrocycleGoal.name,
+    MESOCYCLE: currentPlan.mesocycleMilestones[0]?.name || 'N/A',
+    CURRENT_DATE: new Date().toISOString(),
+    NEXT_WEEK_NUMBER: String(weekNumber || 1),
+    WEEK_DATE_RANGE: `${weekDateRange.start} to ${weekDateRange.end}`,
+    PLANNED_WORKOUTS: plannedWorkouts.length > 0
+      ? plannedWorkouts.map(w => `${w.name} (${w.date})`).join(', ')
+      : 'None',
+    CUSTOM_PROMPT: customFeedback || 'Not provided'
+  } : undefined;
+
     return (
-      <div className="container mx-auto p-6 max-w-4xl">
+    <>
+      <div className="container mx-auto p-6 max-w-6xl">
         <div className="space-y-6">
           {/* Header */}
           <div className="text-center space-y-2">
-            <div className="flex justify-center mb-4">
-              <div className="p-3 rounded-full bg-green-500/10">
-                <CheckCircle className="h-8 w-8 text-green-600" />
-              </div>
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight">Goals Approved!</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Get Weekly Workout Suggestions</h1>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Now let's generate your first week of workouts
+              AI Coach will analyze your goals and current plan to suggest workouts
             </p>
           </div>
 
@@ -154,20 +212,14 @@ export function MicrocycleGenerationFlow() {
             </Alert>
           )}
 
-          {/* Goals Summary with Edit Option */}
+          {/* Goals Summary (Read-only) */}
           {currentPlan && (
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Your Approved Goals</CardTitle>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setStep('editGoals' as any)}
-                  >
-                    Edit Goals
-                  </Button>
-                </div>
+                <CardTitle className="text-lg flex items-center space-x-2">
+                  <Target className="h-5 w-5" />
+                  <span>Your Goals</span>
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div>
@@ -175,77 +227,100 @@ export function MicrocycleGenerationFlow() {
                   <p className="text-sm text-muted-foreground">{currentPlan.macrocycleGoal.name}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium">{currentPlan.mesocycleMilestones.length} Training Phases</p>
-                  <p className="text-xs text-muted-foreground">
-                    {currentPlan.mesocycleMilestones.map(m => m.name).join(' → ')}
+                  <p className="text-sm font-medium">Current Phase:</p>
+                  <p className="text-sm text-muted-foreground">
+                    {currentPlan.mesocycleMilestones[0]?.name || 'N/A'} - {currentPlan.mesocycleMilestones[0]?.focus || 'N/A'}
                   </p>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Generate Button */}
+          {/* Planned Workouts Info */}
+          {plannedWorkouts.length > 0 && (
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                You already have {plannedWorkouts.length} workout{plannedWorkouts.length !== 1 ? 's' : ''} planned for this period. 
+                AI will consider these when making suggestions.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Custom Feedback */}
           <Card>
-            <CardHeader className="text-center">
-              <CardTitle className="flex items-center justify-center space-x-2">
-                <Dumbbell className="h-5 w-5" />
-                <span>Generate Your First Microcycle</span>
-              </CardTitle>
+            <CardHeader>
+              <CardTitle className="text-base">Additional Instructions (Optional)</CardTitle>
               <CardDescription>
-                AI will create personalized workouts for your first training week based on your goals
+                Any specific requests or preferences for this week's workouts
               </CardDescription>
             </CardHeader>
             <CardContent>
+              <Textarea
+                placeholder="e.g., 'Focus on upper body this week', 'I have limited time, shorter workouts please', 'Include more core work'..."
+                value={customFeedback}
+                onChange={(e) => setCustomFeedback(e.target.value)}
+                rows={4}
+                className="resize-none"
+              />
+            </CardContent>
+          </Card>
+
+          {/* Prompt Editor */}
+          <PromptEditor
+            title="Microcycle Generation Prompt"
+            description="Customize how AI generates workout suggestions for you"
+            initialPrompt={editingPrompt}
+            availablePlaceholders={placeholders}
+            populatedData={populatedData}
+            onSave={handlePromptSaved}
+            onReset={handlePromptReset}
+            loading={loading}
+          />
+
+          {/* Generate Button */}
               <div className="flex justify-center pt-4">
                 <Button 
                   onClick={handleGenerate}
                   size="lg"
                   disabled={generating}
                 >
+              {generating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating Suggestions...
+                </>
+              ) : (
+                <>
                   <Sparkles className="h-4 w-4 mr-2" />
-                  Generate First Microcycle
+                  Generate Workout Suggestions
+                </>
+              )}
+            </Button>
+          </div>
+
+          {onClose && (
+            <div className="flex justify-center">
+              <Button variant="outline" onClick={onClose}>
+                Cancel
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+          )}
         </div>
       </div>
-    );
-  }
 
-  // Generating
-  if (step === 'generating') {
-    return (
-      <div className="container mx-auto p-6 max-w-4xl">
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-center space-y-4">
-              <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-              <div>
-                <h3 className="text-lg font-semibold">Generating Your Workouts</h3>
-                <p className="text-sm text-muted-foreground mt-2">
-                  AI is creating your personalized first microcycle...
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Review
-  if (step === 'review' && currentPlan?.currentMicrocycle) {
-    return (
-      <div className="container mx-auto p-6 max-w-6xl">
-        <MicrocyclePreview
-          plan={currentPlan}
-          onApprove={handleApprove}
+      {/* Suggestions Dialog */}
+      {currentPlan?.currentSuggestion && (
+        <WorkoutSuggestionsDialog
+          isOpen={showSuggestionsDialog}
+          onClose={handleCloseSuggestions}
+          suggestion={currentPlan.currentSuggestion}
+          onAcceptWorkout={handleAcceptWorkout}
+          onAcceptAll={handleAcceptAll}
+          onRegenerate={handleRegenerate}
+          accepting={false}
         />
-      </div>
+      )}
+    </>
     );
   }
-
-  return null;
-}
-

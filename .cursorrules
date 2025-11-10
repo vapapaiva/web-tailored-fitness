@@ -475,6 +475,79 @@ npm run lint         # Run ESLint
   - No functional changes - all removed code was unused
 - **Verification**: Full codebase audit performed with grep to confirm no imports/usage
 
+### 22. AI Coach Flexible System with User-Editable Prompts (2025-11-08)
+- **Files**: 
+  - **Core Store**: `src/stores/aiCoachStore.ts` - Complete AI Coach state management with prompt management
+  - **Types**: `src/types/aiCoach.ts` - MicrocycleSuggestion, WorkoutSuggestion types
+  - **Types**: `src/types/profile.ts` - CustomPromptConfig for user prompts
+  - **Components**:
+    - `src/components/ai-coach/PromptEditor.tsx` - Full-featured prompt editing component
+    - `src/components/ai-coach/WorkoutSuggestionsDialog.tsx` - Shows AI suggestions for user approval
+    - `src/components/ai-coach/AICoachStatistics.tsx` - Statistics dashboard
+    - Updated `src/components/ai-coach/GoalsGenerationFlow.tsx` - Integrated prompt editing
+    - Updated `src/components/ai-coach/GoalsReview.tsx` - Prompt editing during regeneration
+    - Updated `src/components/ai-coach/MicrocycleGenerationFlow.tsx` - Complete rewrite for suggestions
+    - Updated `src/components/ai-coach/AICoachDashboard.tsx` - Removed microcycle display, added stats
+  - **Pages**: Updated `src/pages/AICoachPage.tsx` - Simplified routing
+  - **Testing**: Updated `src/pages/TestingPage.tsx` - Simplified cleanup functions
+- **Description**: Complete redesign of AI Coach system for flexibility and user control
+- **Key Architecture Changes**:
+  - **Editable Prompts**: Users can customize AI generation prompts
+  - **"Coach Suggests" Metaphor**: AI suggests workouts, user manually accepts
+  - **No Auto-Generation**: Workouts aren't added until user approves
+  - **Flexible Management**: AI workouts can be deleted/moved like manual workouts
+- **Features**:
+  1. **User-Editable Prompts**:
+     - Custom prompts stored in user document: `customGoalsPrompt`, `customMicrocyclePrompt`
+     - Fallback to Firebase Remote Config if custom prompts not set
+     - Full prompt editor with:
+       - System prompt editing
+       - User prompt template editing
+       - Placeholder hints (e.g., `{USER_PROFILE}`, `{MACROCYCLE}`, `{PLANNED_WORKOUTS}`)
+       - Real-time populated preview
+       - Save/Reset to default functionality
+     - Integrated in both goals and microcycle generation flows
+     - Available during regeneration with current context
+  2. **Flexible Microcycle Generation**:
+     - AI generates suggestions (not actual workouts)
+     - Suggestions include assessment: "Your plan looks good" or "Here are suggestions"
+     - User manually accepts/rejects individual workouts
+     - "Add All" and individual "Add to Plan" buttons
+     - Suggestions dialog shows workouts grouped by date
+     - Can regenerate with feedback while viewing suggestions
+  3. **Enhanced Prompts**:
+     - Goals prompt populated with: user profile, fitness goals, custom input, current date
+     - Microcycle prompt populated with: profile, goals, planned workouts, completed workouts, custom feedback
+     - AI assessment field guides user on whether workouts needed
+  4. **Statistics Dashboard**:
+     - Shows planned vs completed workouts
+     - Tracks AI-suggested workouts separately
+     - AI workouts counted as: all workouts with `source: 'ai-coach'` (includes modified/detached)
+     - Goals progress placeholder (coming soon)
+  5. **Always-Available Generation**:
+     - "Get Weekly Workout Suggestions" button always visible
+     - No workflow restrictions - can generate anytime
+     - Considers existing planned workouts
+     - AI decides if more workouts needed
+  6. **Removed Restrictions**:
+     - AI workouts can be deleted (previously restricted)
+     - AI workouts can be moved to any date (no date range restrictions)
+     - Modified AI workouts still show "Modified" badge + restore option
+- **User Experience**:
+  - Goals generation: Input goals → Edit prompt (optional) → Generate → Review → Approve
+  - Microcycle suggestions: View goals → Edit prompt → Add feedback → Generate → Review suggestions → Accept workouts → Done
+  - Regeneration: Full prompt editing available with previous context
+- **Firebase Schema**:
+  - User document: `customGoalsPrompt`, `customMicrocyclePrompt`
+  - AI Plan: `currentSuggestion: MicrocycleSuggestion` (replaces auto-created microcycles)
+  - Plan status: Added `'suggestion-pending'` state
+- **Breaking Changes**:
+  - `generateMicrocycle()` now creates suggestions, not workouts
+  - `approveMicrocycle()` deprecated (workouts accepted individually)
+  - `currentMicrocycle` being phased out in favor of `currentSuggestion`
+- **Architecture**: Follows real-time sync pattern for prompt storage
+- **Dependencies**: Existing (no new dependencies required)
+
 ---
 
 ## 🔄 In Progress Features
@@ -502,13 +575,18 @@ npm run lint         # Run ESLint
 - Git repository is connected to: git@github.com:vapapaiva/web-tailored-fitness.git
 
 ## 🔥 Firebase Dependencies
-**CRITICAL**: The app relies entirely on Firebase Remote Config for configuration:
+**CRITICAL**: The app relies on Firebase for configuration and user data:
 - **Profile Configuration**: `profile_config` parameter in Firebase Remote Config
 - **OpenAI API Key**: `openai_api_key` parameter in Firebase Remote Config  
-- **Fitness Plan Prompts**: `prompts_fitness_plan_generation` parameter in Firebase Remote Config
+- **AI Coach Default Prompts**: 
+  - `prompts_ai_coach_goals_generation` - Default goals generation prompt
+  - `prompts_ai_coach_workout_generation` - Default microcycle generation prompt
+  - Users can override these with custom prompts stored in their profile
+- **User Custom Prompts**: Stored in user document (`customGoalsPrompt`, `customMicrocyclePrompt`)
 - **Local JSON files**: Are examples only - actual config comes from Firebase
 
 ## 🔄 Last Updated
+AI Coach flexible system with user-editable prompts implemented on 2025-11-08
 Dead code cleanup completed on 2025-10-29 (removed 11 unused files)
 AI Coach week completion UI improvements on 2025-10-29 (microcycle naming, generation flow)
 Legacy fitness plan system removed and app restructured on 2025-10-16

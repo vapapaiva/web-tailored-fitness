@@ -2,17 +2,23 @@
  * Fitness Goals Card - Displays macrocycle and mesocycles with editing capability
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { AIPlan } from '@/types/aiCoach';
+import type { CustomPromptConfig } from '@/types/profile';
 import { useAICoachStore } from '@/stores/aiCoachStore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuthStore } from '@/stores/authStore';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { GoalsEditor } from './GoalsEditor';
-import { Target, Calendar, ChevronDown, ChevronUp, Edit, Info, X, RotateCcw } from 'lucide-react';
+import { PromptEditor } from './PromptEditor';
+import { Target, Calendar, ChevronDown, ChevronUp, Edit, Info, X, RotateCcw, Loader2 } from 'lucide-react';
+import { getValue, fetchAndActivate } from 'firebase/remote-config';
+import { remoteConfig } from '@/lib/firebase';
 
 interface FitnessGoalsCardProps {
   plan: AIPlan;
@@ -22,13 +28,49 @@ interface FitnessGoalsCardProps {
  * Fitness goals card component
  */
 export function FitnessGoalsCard({ plan }: FitnessGoalsCardProps) {
-  const { dismissRegenerationSuggestion, regenerateMicrocycle, regenerateGoals } = useAICoachStore();
+  const { user } = useAuthStore();
+  const { 
+    dismissRegenerationSuggestion, 
+    regenerateMicrocycle, 
+    generateGoals,
+    generating,
+    loading,
+    customGoalsPrompt,
+    saveCustomGoalsPrompt,
+    resetGoalsPromptToDefault
+  } = useAICoachStore();
   const [showEditor, setShowEditor] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showRegenerateFeedback, setShowRegenerateFeedback] = useState(false);
-  const [showRegenerateGoals, setShowRegenerateGoals] = useState(false);
+  const [showRegenerateGoalsDialog, setShowRegenerateGoalsDialog] = useState(false);
   const [weekFeedback, setWeekFeedback] = useState('');
   const [goalsFeedback, setGoalsFeedback] = useState('');
+  const [defaultPrompt, setDefaultPrompt] = useState<CustomPromptConfig | null>(null);
+  const [editingPrompt, setEditingPrompt] = useState<CustomPromptConfig | null>(null);
+  
+  // Load default prompt
+  useEffect(() => {
+    const loadDefaultPrompt = async () => {
+      try {
+        await fetchAndActivate(remoteConfig);
+        const promptValue = getValue(remoteConfig, 'prompts_ai_coach_goals_generation');
+        const promptString = promptValue.asString();
+        
+        if (promptString) {
+          const promptConfig = JSON.parse(promptString);
+          const prompt = {
+            systemPrompt: promptConfig.system_prompt,
+            userPromptTemplate: promptConfig.user_prompt_template
+          };
+          setDefaultPrompt(prompt);
+          setEditingPrompt(customGoalsPrompt || prompt);
+        }
+      } catch (error) {
+        console.error('Failed to load default prompt:', error);
+      }
+    };
+    loadDefaultPrompt();
+  }, [customGoalsPrompt]);
 
   if (showEditor) {
     return (
@@ -108,43 +150,6 @@ export function FitnessGoalsCard({ plan }: FitnessGoalsCardProps) {
         </Alert>
       )}
       
-      {/* Regenerate Goals Feedback Input */}
-      {showRegenerateGoals && (
-        <Alert>
-          <RotateCcw className="h-4 w-4" />
-          <AlertDescription className="space-y-3">
-            <p className="font-medium">Regenerate Fitness Goals</p>
-            <Textarea
-              placeholder="Optional: Tell AI what you'd like to change about your goals..."
-              value={goalsFeedback}
-              onChange={(e) => setGoalsFeedback(e.target.value)}
-              rows={3}
-            />
-            <div className="flex justify-end space-x-2">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => {
-                  setShowRegenerateGoals(false);
-                  setGoalsFeedback('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button 
-                size="sm"
-                onClick={async () => {
-                  await regenerateGoals(goalsFeedback);
-                  setShowRegenerateGoals(false);
-                  setGoalsFeedback('');
-                }}
-              >
-                Regenerate Goals
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* Goals Card */}
       <Card>
@@ -158,7 +163,7 @@ export function FitnessGoalsCard({ plan }: FitnessGoalsCardProps) {
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => setShowRegenerateGoals(!showRegenerateGoals)}
+                onClick={() => setShowRegenerateGoalsDialog(true)}
               >
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Regenerate Goals
@@ -229,6 +234,129 @@ export function FitnessGoalsCard({ plan }: FitnessGoalsCardProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Regenerate Goals Dialog */}
+      <Dialog open={showRegenerateGoalsDialog} onOpenChange={setShowRegenerateGoalsDialog}>
+        <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <RotateCcw className="h-5 w-5" />
+              <span>Regenerate Fitness Goals</span>
+            </DialogTitle>
+            <DialogDescription>
+              Provide feedback and customize the prompt to regenerate your goals
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 mt-4">
+            {/* Previous Goals Context */}
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                Your current goals will be used as context. Add feedback below to guide changes.
+              </AlertDescription>
+            </Alert>
+
+            {/* Feedback Input */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Your Feedback</CardTitle>
+                <CardDescription>
+                  Describe what you want to change (optional but recommended)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  placeholder="e.g., 'Focus more on strength', 'Shorter timeline', 'Add mobility work'..."
+                  value={goalsFeedback}
+                  onChange={(e) => setGoalsFeedback(e.target.value)}
+                  rows={5}
+                  className="resize-none"
+                />
+              </CardContent>
+            </Card>
+
+            {/* Prompt Editor */}
+            {editingPrompt && defaultPrompt && (
+              <PromptEditor
+                title="Goals Regeneration Prompt"
+                description="Customize the prompt used to regenerate your goals"
+                initialPrompt={editingPrompt}
+                availablePlaceholders={[
+                  { placeholder: 'USER_PROFILE', description: 'Complete user profile data' },
+                  { placeholder: 'FITNESS_GOAL_INPUT', description: 'User\'s fitness goal from profile' },
+                  { placeholder: 'CUSTOM_INPUT', description: 'Feedback + context about previous goals' },
+                  { placeholder: 'CURRENT_DATE', description: 'Current date (ISO format)' }
+                ]}
+                populatedData={user?.profile ? {
+                  USER_PROFILE: JSON.stringify(user.profile, null, 2),
+                  FITNESS_GOAL_INPUT: String(user.profile.goals || 'Not set'),
+                  CUSTOM_INPUT: `Previous Goals:\nMacro: ${plan.macrocycleGoal.name}\nMesocycles: ${plan.mesocycleMilestones.map(m => m.name).join(', ')}\n\nFeedback: ${goalsFeedback || 'Not provided'}`,
+                  CURRENT_DATE: new Date().toISOString()
+                } : undefined}
+                onSave={async (prompt) => {
+                  await saveCustomGoalsPrompt(prompt);
+                  setEditingPrompt(prompt);
+                }}
+                onReset={async () => {
+                  await resetGoalsPromptToDefault();
+                  setEditingPrompt(defaultPrompt);
+                }}
+                loading={loading}
+              />
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-2 pt-4 border-t">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowRegenerateGoalsDialog(false);
+                  setGoalsFeedback('');
+                }}
+                disabled={generating}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={async () => {
+                  if (!user?.profile) return;
+                  
+                  // Build customInput with previous goals context + feedback
+                  const previousGoalsContext = `Current Goals:\nMacrocycle: ${plan.macrocycleGoal.name} - ${plan.macrocycleGoal.value}\nMesocycles: ${plan.mesocycleMilestones.map(m => `${m.name} (${m.focus})`).join(', ')}`;
+                  const feedbackSection = goalsFeedback.trim() ? `\n\nUser Feedback: ${goalsFeedback}` : '';
+                  const customInput = previousGoalsContext + feedbackSection + '\n\nPlease regenerate goals taking the above context and feedback into account.';
+                  
+                  const request = {
+                    userProfile: user.profile,
+                    fitnessGoalInput: String(user.profile.goals || ''),
+                    customInput,
+                    currentDate: new Date().toISOString(),
+                  };
+                  
+                  await generateGoals(request, editingPrompt || undefined);
+                  setShowRegenerateGoalsDialog(false);
+                  setGoalsFeedback('');
+                }}
+                disabled={generating}
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Regenerating...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Regenerate Goals
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

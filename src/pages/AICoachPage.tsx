@@ -1,13 +1,12 @@
 /**
  * AI Coach Page - AI-powered fitness planning
- * Two-phase generation: Goals first, then workouts
+ * Flexible "coach suggests" system with user-editable prompts
  */
 
 import { useEffect } from 'react';
 import { useAICoachStore } from '@/stores/aiCoachStore';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
 import { GoalsGenerationFlow } from '@/components/ai-coach/GoalsGenerationFlow';
-import { MicrocycleGenerationFlow } from '@/components/ai-coach/MicrocycleGenerationFlow';
 import { AICoachDashboard } from '@/components/ai-coach/AICoachDashboard';
 import { Loader2 } from 'lucide-react';
 
@@ -19,6 +18,7 @@ export function AICoachPage() {
     currentPlan, 
     loading, 
     loadPlan, 
+    loadCustomPrompts,
     startRealtimeSync, 
     stopRealtimeSync 
   } = useAICoachStore();
@@ -32,9 +32,10 @@ export function AICoachPage() {
   useEffect(() => {
     // Load and sync AI plan
     loadPlan();
+    loadCustomPrompts();
     startRealtimeSync();
     
-    // CRITICAL: Also load and sync workouts (needed for microcycle display)
+    // Also load and sync workouts (needed for statistics)
     loadWorkouts();
     startWorkoutsSync();
     
@@ -42,7 +43,7 @@ export function AICoachPage() {
       stopRealtimeSync();
       stopWorkoutsSync();
     };
-  }, [loadPlan, startRealtimeSync, stopRealtimeSync, loadWorkouts, startWorkoutsSync, stopWorkoutsSync]);
+  }, [loadPlan, loadCustomPrompts, startRealtimeSync, stopRealtimeSync, loadWorkouts, startWorkoutsSync, stopWorkoutsSync]);
 
   if (loading) {
     return (
@@ -60,12 +61,8 @@ export function AICoachPage() {
     return <GoalsGenerationFlow />;
   }
 
-  // Goals approved but no workouts → show workout generation flow
-  if (currentPlan.status === 'goals-approved' && !currentPlan.currentMicrocycle) {
-    return <MicrocycleGenerationFlow />;
-  }
-
-  // Has active plan → show dashboard
+  // Goals approved → show dashboard (always, regardless of suggestions/microcycle)
+  // Dashboard contains the generate button for getting suggestions
   return <AICoachDashboard plan={currentPlan} />;
 }
 

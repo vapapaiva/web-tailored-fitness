@@ -23,8 +23,9 @@ import type {
   GoalsGenerationResponse,
   MicrocycleGenerationRequest
 } from '@/types/aiCoach';
+import type { CustomPromptConfig } from '@/types/profile';
 import { sanitizeWorkoutForFirebase } from '@/lib/firebaseUtils';
-import { calculateInitialWeekRange, calculateDateInRange } from '@/lib/dateUtils';
+import { calculateInitialWeekRange } from '@/lib/dateUtils';
 import { normalizeExercises } from '@/lib/workoutNormalization';
 
 interface AICoachState {
@@ -34,15 +35,25 @@ interface AICoachState {
   error: string | null;
   realtimeUnsubscribe: (() => void) | null;
   
+  // Prompt Management
+  customGoalsPrompt: CustomPromptConfig | null;
+  customMicrocyclePrompt: CustomPromptConfig | null;
+  loadCustomPrompts: () => Promise<void>;
+  saveCustomGoalsPrompt: (prompt: CustomPromptConfig) => Promise<void>;
+  saveCustomMicrocyclePrompt: (prompt: CustomPromptConfig) => Promise<void>;
+  resetGoalsPromptToDefault: () => Promise<void>;
+  resetMicrocyclePromptToDefault: () => Promise<void>;
+  
   // Phase 1: Goals Generation
-  generateGoals: (request: GoalsGenerationRequest) => Promise<void>;
+  generateGoals: (request: GoalsGenerationRequest, customPrompt?: CustomPromptConfig) => Promise<void>;
   approveGoals: () => Promise<void>;
   updateGoals: (updates: Partial<Pick<AIPlan, 'macrocycleGoal' | 'mesocycleMilestones'>>) => Promise<void>;
   regenerateGoals: (feedback: string) => Promise<void>;
   dismissRegenerationSuggestion: () => Promise<void>;
   
-  // Phase 2: Workout Generation (placeholders for now, implement in Phase C)
+  // Phase 2: Workout Generation (suggestions-based)
   generateMicrocycle: (request: MicrocycleGenerationRequest) => Promise<void>;
+  acceptSuggestedWorkouts: (workoutIndexes: number[]) => Promise<void>;
   approveMicrocycle: () => Promise<void>;
   regenerateMicrocycle: (feedback: string) => Promise<void>;
   
@@ -65,8 +76,129 @@ export const useAICoachStore = create<AICoachState>()(
     generating: false,
     error: null,
     realtimeUnsubscribe: null,
+    customGoalsPrompt: null,
+    customMicrocyclePrompt: null,
 
-    generateGoals: async (request: GoalsGenerationRequest) => {
+    loadCustomPrompts: async () => {
+      const authStore = useAuthStore.getState();
+      const { user } = authStore;
+      
+      if (!user) return;
+
+      try {
+        // Custom prompts are already loaded in the user object from authStore
+        set({ 
+          customGoalsPrompt: user.customGoalsPrompt || null,
+          customMicrocyclePrompt: user.customMicrocyclePrompt || null
+        });
+      } catch (error) {
+        console.error('❌ Load custom prompts error:', error);
+      }
+    },
+
+    saveCustomGoalsPrompt: async (prompt: CustomPromptConfig) => {
+      const authStore = useAuthStore.getState();
+      const { user, updateProfile } = authStore;
+      
+      if (!user) {
+        set({ error: 'User not authenticated' });
+        return;
+      }
+
+      try {
+        set({ loading: true, error: null });
+        
+        await updateProfile({ customGoalsPrompt: prompt });
+        set({ customGoalsPrompt: prompt, loading: false });
+        
+        console.log('✅ Custom goals prompt saved');
+      } catch (error) {
+        console.error('❌ Save custom goals prompt error:', error);
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to save custom prompt',
+          loading: false 
+        });
+      }
+    },
+
+    saveCustomMicrocyclePrompt: async (prompt: CustomPromptConfig) => {
+      const authStore = useAuthStore.getState();
+      const { user, updateProfile } = authStore;
+      
+      if (!user) {
+        set({ error: 'User not authenticated' });
+        return;
+      }
+
+      try {
+        set({ loading: true, error: null });
+        
+        await updateProfile({ customMicrocyclePrompt: prompt });
+        set({ customMicrocyclePrompt: prompt, loading: false });
+        
+        console.log('✅ Custom microcycle prompt saved');
+      } catch (error) {
+        console.error('❌ Save custom microcycle prompt error:', error);
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to save custom prompt',
+          loading: false 
+        });
+      }
+    },
+
+    resetGoalsPromptToDefault: async () => {
+      const authStore = useAuthStore.getState();
+      const { user, updateProfile } = authStore;
+      
+      if (!user) {
+        set({ error: 'User not authenticated' });
+        return;
+      }
+
+      try {
+        set({ loading: true, error: null });
+        
+        // Remove custom prompt from user document (will fallback to Remote Config)
+        await updateProfile({ customGoalsPrompt: undefined });
+        set({ customGoalsPrompt: null, loading: false });
+        
+        console.log('✅ Goals prompt reset to default');
+      } catch (error) {
+        console.error('❌ Reset goals prompt error:', error);
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to reset prompt',
+          loading: false 
+        });
+      }
+    },
+
+    resetMicrocyclePromptToDefault: async () => {
+      const authStore = useAuthStore.getState();
+      const { user, updateProfile } = authStore;
+      
+      if (!user) {
+        set({ error: 'User not authenticated' });
+        return;
+      }
+
+      try {
+        set({ loading: true, error: null });
+        
+        // Remove custom prompt from user document (will fallback to Remote Config)
+        await updateProfile({ customMicrocyclePrompt: undefined });
+        set({ customMicrocyclePrompt: null, loading: false });
+        
+        console.log('✅ Microcycle prompt reset to default');
+      } catch (error) {
+        console.error('❌ Reset microcycle prompt error:', error);
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to reset prompt',
+          loading: false 
+        });
+      }
+    },
+
+    generateGoals: async (request: GoalsGenerationRequest, customPrompt?: CustomPromptConfig) => {
       const authStore = useAuthStore.getState();
       const { user } = authStore;
       
@@ -89,7 +221,24 @@ export const useAICoachStore = create<AICoachState>()(
           throw new Error('OpenAI API key not configured in Firebase Remote Config');
         }
 
-        // Get goals generation prompt
+        // Determine which prompt to use: customPrompt param > state > Remote Config
+        let promptConfig: { system_prompt: string; user_prompt_template: string };
+        
+        if (customPrompt) {
+          // Use provided custom prompt
+          promptConfig = {
+            system_prompt: customPrompt.systemPrompt,
+            user_prompt_template: customPrompt.userPromptTemplate
+          };
+        } else if (get().customGoalsPrompt) {
+          // Use custom prompt from state
+          const statePrompt = get().customGoalsPrompt!;
+          promptConfig = {
+            system_prompt: statePrompt.systemPrompt,
+            user_prompt_template: statePrompt.userPromptTemplate
+          };
+        } else {
+          // Fallback to Remote Config
         const promptValue = getValue(remoteConfig, 'prompts_ai_coach_goals_generation');
         const promptString = promptValue.asString();
         
@@ -97,7 +246,8 @@ export const useAICoachStore = create<AICoachState>()(
           throw new Error('Goals generation prompt (prompts_ai_coach_goals_generation) not configured in Firebase Remote Config');
         }
 
-        const promptConfig = JSON.parse(promptString);
+          promptConfig = JSON.parse(promptString);
+        }
 
         // Populate user prompt template
         const userPrompt = promptConfig.user_prompt_template
@@ -422,14 +572,15 @@ export const useAICoachStore = create<AICoachState>()(
       }
     },
 
-    // Phase 2: Workout Generation
+    // Phase 2: Workout Generation (creates suggestions, not workouts)
     generateMicrocycle: async (request: MicrocycleGenerationRequest) => {
       const authStore = useAuthStore.getState();
       const { user } = authStore;
       const workoutsStore = useWorkoutsStore.getState();
+      const { currentPlan } = get();
       
-      if (!user) {
-        set({ error: 'User not authenticated' });
+      if (!user || !currentPlan) {
+        set({ error: 'User not authenticated or no plan' });
         return;
       }
 
@@ -444,15 +595,47 @@ export const useAICoachStore = create<AICoachState>()(
           throw new Error('OpenAI API key not configured');
         }
 
-        // Get microcycle workout generation prompt
+        // Determine which prompt to use: custom > Remote Config
+        let promptConfig: { system_prompt: string; user_prompt_template: string };
+        
+        if (get().customMicrocyclePrompt) {
+          const statePrompt = get().customMicrocyclePrompt!;
+          promptConfig = {
+            system_prompt: statePrompt.systemPrompt,
+            user_prompt_template: statePrompt.userPromptTemplate
+          };
+        } else {
+          // Fallback to Remote Config
         const promptValue = getValue(remoteConfig, 'prompts_ai_coach_workout_generation');
         const promptString = promptValue.asString();
         
         if (!promptString) {
-          throw new Error('Workout generation prompt (prompts_ai_coach_workout_generation) not configured in Firebase Remote Config');
+            throw new Error('Workout generation prompt not configured in Firebase Remote Config');
+          }
+          
+          promptConfig = JSON.parse(promptString);
         }
 
-        const promptConfig = JSON.parse(promptString);
+        // Get planned workouts for the microcycle period (current week + next if applicable)
+        const plannedWorkouts = workoutsStore.workouts.filter(w => {
+          if (!w.date || w.status === 'completed') return false;
+          const workoutDate = new Date(w.date);
+          const startDate = new Date(request.weekDateRange.start);
+          const endDate = new Date(request.weekDateRange.end);
+          return workoutDate >= startDate && workoutDate <= endDate;
+        });
+
+        // Prepare data for prompt placeholders
+        const plannedWorkoutsStr = plannedWorkouts.length > 0
+          ? JSON.stringify(plannedWorkouts.map(w => ({
+              name: w.name,
+              date: w.date,
+              type: w.type,
+              focus: w.focus,
+              exercises: w.exercises.length,
+              source: w.source
+            })), null, 2)
+          : '[]';
 
         // Prepare previous microcycle data for prompt (if applicable)
         const previousPlanned = request.previousMicrocycle 
@@ -463,8 +646,16 @@ export const useAICoachStore = create<AICoachState>()(
           ? `Completed Workouts: ${request.previousMicrocycle.actual.completedWorkouts.length}\nCompletion Rate: ${Math.round(request.previousMicrocycle.actual.completionRate)}%\nReflection: ${request.previousMicrocycle.actual.weeklyReflection}`
           : '';
 
-        // Build user prompt with all placeholders
-        const userPrompt = promptConfig.user_prompt_template
+        // Add explicit instructions based on current state
+        let additionalInstructions = '';
+        if (plannedWorkouts.length === 0) {
+          additionalInstructions = '\n\n**IMPORTANT**: The user currently has NO workouts planned for this period. You MUST suggest 3-5 appropriate workouts to help them achieve their goals.';
+        } else {
+          additionalInstructions = `\n\n**NOTE**: The user has ${plannedWorkouts.length} workout(s) already planned. Evaluate if this is sufficient for their goals and availability, or if additional workouts would be beneficial.`;
+        }
+
+        // Build user prompt with all placeholders (including PLANNED_WORKOUTS)
+        let userPrompt = promptConfig.user_prompt_template
           .replace('{USER_PROFILE}', JSON.stringify(request.userProfile, null, 2))
           .replace('{MACROCYCLE}', JSON.stringify(request.macrocycleGoal, null, 2))
           .replace('{MESOCYCLE}', JSON.stringify(request.mesocycleMilestones[0] || {}, null, 2))
@@ -474,14 +665,25 @@ export const useAICoachStore = create<AICoachState>()(
           .replace('{PREVIOUS_MICROCYCLE_PLANNED}', previousPlanned)
           .replace('{PREVIOUS_MICROCYCLE_ACTUAL}', previousActual)
           .replace('{CUSTOM_PROMPT}', request.customFeedback || '')
+          .replace('{PLANNED_WORKOUTS}', plannedWorkoutsStr)
           .replace('{WORKOUT_HISTORY}', JSON.stringify(request.workoutHistory || [], null, 2));
+        
+        // Append additional instructions
+        userPrompt += additionalInstructions;
+        
+        // Enhance system prompt to ensure new format
+        const enhancedSystemPrompt = promptConfig.system_prompt + 
+          '\n\nRESPONSE FORMAT: You must respond with JSON containing:\n' +
+          '1. "assessment" (string): Your professional assessment of the current plan\n' +
+          '2. "suggestedWorkouts" (array): Workouts to add (can be empty if plan is sufficient)\n' +
+          'Example: { "assessment": "...", "suggestedWorkouts": [...] }';
 
         // 📤 LOG: Prompt being sent to AI
         console.log('\n' + '='.repeat(80));
         console.log('🤖 AI CALL: MICROCYCLE GENERATION');
         console.log('='.repeat(80));
         console.log('📋 SYSTEM PROMPT:');
-        console.log(promptConfig.system_prompt);
+        console.log(enhancedSystemPrompt);
         console.log('\n📝 USER PROMPT (with populated data):');
         console.log(userPrompt);
         console.log('='.repeat(80) + '\n');
@@ -496,7 +698,7 @@ export const useAICoachStore = create<AICoachState>()(
           body: JSON.stringify({
             model: 'gpt-4o',
             messages: [
-              { role: 'system', content: promptConfig.system_prompt },
+              { role: 'system', content: enhancedSystemPrompt },
               { role: 'user', content: userPrompt }
             ],
             temperature: 0.7,
@@ -528,18 +730,65 @@ export const useAICoachStore = create<AICoachState>()(
         }
 
         const aiResponse = JSON.parse(content);
-        const microcycleData = aiResponse.plan?.currentMicrocycle;
-        if (!microcycleData) throw new Error('Invalid AI response');
-
-        // Create workout documents in WorkoutsStore (as drafts)
-        const workoutIds: string[] = [];
+        
+        // Handle both NEW and OLD formats
+        let assessment = '';
+        let suggestedWorkouts = [];
+        
+        if (aiResponse.assessment !== undefined) {
+          // NEW FORMAT: { assessment, suggestedWorkouts }
+          assessment = aiResponse.assessment || 'AI Coach has reviewed your plan.';
+          suggestedWorkouts = aiResponse.suggestedWorkouts || [];
+        } else if (aiResponse.plan?.currentMicrocycle?.workouts) {
+          // OLD FORMAT: { plan: { currentMicrocycle: { workouts } } }
+          suggestedWorkouts = aiResponse.plan.currentMicrocycle.workouts || [];
+          assessment = aiResponse.explanation || `Suggested ${suggestedWorkouts.length} workout(s) for this week.`;
+        } else if (aiResponse.workouts) {
+          // ALTERNATIVE FORMAT: { workouts: [...] }
+          suggestedWorkouts = aiResponse.workouts;
+          assessment = aiResponse.explanation || `Suggested ${suggestedWorkouts.length} workout(s) for this week.`;
+        }
+        
+        // If we got workouts but no assessment, generate one
+        if (!assessment && suggestedWorkouts.length > 0) {
+          assessment = `I've prepared ${suggestedWorkouts.length} workout${suggestedWorkouts.length !== 1 ? 's' : ''} to help you achieve your goals.`;
+        } else if (!assessment) {
+          assessment = 'Your current plan looks good. No additional workouts needed at this time.';
+        }
         
         // Track used dates to handle multiple workouts on same dayOfWeek
         const usedDates = new Set<string>();
         
-        for (const workoutData of microcycleData.workouts || []) {
+        // Create suggestion object (don't create workout documents yet)
+        const suggestion = {
+          assessment,
+          suggestedWorkouts: suggestedWorkouts.map((workoutData: {
+            name?: string;
+            dayOfWeek?: number;
+            type?: string;
+            focus?: string;
+            value?: string;
+            exercises?: Array<{
+              id?: string;
+              name: string;
+              category?: string;
+              muscleGroups?: string[];
+              equipment?: string[];
+              instructions?: string;
+              sets: Array<{
+                reps: number;
+                weight?: number;
+                duration?: number;
+                restTime?: number;
+                notes?: string;
+                volumeType?: 'sets-reps' | 'sets-reps-weight' | 'duration' | 'distance' | 'completion';
+              }>;
+            }>;
+            estimatedDuration?: number;
+            checkIns?: { greenFlags: string[]; redFlags: string[] };
+          }) => {
           // Validate and normalize dayOfWeek (AI sometimes returns invalid values)
-          let dayOfWeek = workoutData.dayOfWeek;
+            let dayOfWeek = workoutData.dayOfWeek ?? 1; // Default to Monday
           
           if (dayOfWeek === 7 || dayOfWeek > 6) {
             dayOfWeek = 0; // Sunday
@@ -548,17 +797,17 @@ export const useAICoachStore = create<AICoachState>()(
             dayOfWeek = 1; // Monday
           }
           
-          // CRITICAL: Find NEXT unused date with this dayOfWeek
+            // Find NEXT unused date with this dayOfWeek
           let date: string | null = null;
           const startDate = new Date(request.weekDateRange.start);
           const endDate = new Date(request.weekDateRange.end);
           
-          let currentDate = new Date(startDate);
-          while (currentDate <= endDate) {
-            if (currentDate.getDay() === dayOfWeek) {
-              const year = currentDate.getFullYear();
-              const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-              const day = String(currentDate.getDate()).padStart(2, '0');
+            const tempDate = new Date(startDate);
+            while (tempDate <= endDate) {
+              if (tempDate.getDay() === dayOfWeek) {
+                const year = tempDate.getFullYear();
+                const month = String(tempDate.getMonth() + 1).padStart(2, '0');
+                const day = String(tempDate.getDate()).padStart(2, '0');
               const dateStr = `${year}-${month}-${day}`;
               
               // Check if this date is already used
@@ -568,57 +817,82 @@ export const useAICoachStore = create<AICoachState>()(
                 break;
               }
             }
-            currentDate.setDate(currentDate.getDate() + 1);
+              tempDate.setDate(tempDate.getDate() + 1);
           }
           
           if (!date) {
-            console.error(`❌ Could not find unused dayOfWeek=${dayOfWeek} in range ${request.weekDateRange.start} to ${request.weekDateRange.end}`);
-            continue; // Skip this workout
+              console.warn(`⚠️ Could not find unused dayOfWeek=${dayOfWeek} in range, using fallback`);
+              date = request.weekDateRange.start; // Fallback to start date
           }
           
-          // Normalize exercises to ensure volumeType is correctly set
-          const normalizedExercises = normalizeExercises(workoutData.exercises || []);
-          
-          // Store normalized AI suggestion for preservation
-          const originalExercises = JSON.parse(JSON.stringify(normalizedExercises)); // Deep copy
-          
-          const workoutId = await workoutsStore.addWorkout({
-            ...workoutData,
-            exercises: normalizedExercises, // Use normalized exercises
-            dayOfWeek, // Use normalized dayOfWeek
+            // Normalize exercises and ensure they have IDs + volumeRowIds
+            const rawExercises = workoutData.exercises || [];
+            const exercisesWithIds = rawExercises.map((ex, idx) => {
+              // Group sets by their values to assign consistent volumeRowIds
+              const valueGroups: { [key: string]: number[] } = {};
+              
+              ex.sets.forEach((set, setIdx) => {
+                // Create value key for grouping
+                const valueKey = JSON.stringify({
+                  reps: set.reps,
+                  weight: set.weight,
+                  duration: set.duration,
+                  volumeType: set.volumeType
+                });
+                
+                if (!valueGroups[valueKey]) {
+                  valueGroups[valueKey] = [];
+                }
+                valueGroups[valueKey].push(setIdx);
+              });
+              
+              // Assign volumeRowIds - same ID for sets with same values
+              const volumeRowIds: string[] = [];
+              Object.values(valueGroups).forEach((indices, groupIdx) => {
+                const volumeRowId = `volume_${Date.now()}_${idx}_${groupIdx}`;
+                indices.forEach(setIdx => {
+                  volumeRowIds[setIdx] = volumeRowId;
+                });
+              });
+              
+              return {
+                ...ex,
+                id: ex.id || `ex_${Date.now()}_${idx}`,
+                category: ex.category || 'general',
+                muscleGroups: ex.muscleGroups || [],
+                equipment: ex.equipment || [],
+                instructions: ex.instructions || '',
+                sets: ex.sets.map((set, setIdx) => ({
+                  ...set,
+                  restTime: set.restTime ?? 60, // Default 60 seconds rest
+                  volumeRowId: set.volumeRowId || volumeRowIds[setIdx] // Add volumeRowId!
+                }))
+              };
+            });
+            const normalizedExercises = normalizeExercises(exercisesWithIds);
+            
+            // Return workout suggestion (not creating actual workout yet)
+            return {
+              name: workoutData.name || 'Workout',
             date,
-            source: 'ai-coach',
-            status: 'planned', // Start as planned so they appear immediately
-            aiCoachContext: {
-              microcycleId: microcycleData.id || `micro_${Date.now()}`,
-              weekNumber: request.weekNumber
-            },
-            originalAISuggestion: {
-              exercises: originalExercises,
-              createdAt: new Date().toISOString()
-            },
-            hasManualChanges: false
-          });
-          
-          workoutIds.push(workoutId);
-        }
+              dayOfWeek,
+              type: workoutData.type || 'general',
+              focus: workoutData.focus || 'General',
+              value: workoutData.value || '',
+              exercises: normalizedExercises,
+              estimatedDuration: workoutData.estimatedDuration || 60,
+              checkIns: workoutData.checkIns || { greenFlags: [], redFlags: [] }
+            };
+          }),
+          generated_at: new Date().toISOString(),
+          weekDateRange: request.weekDateRange
+        };
 
-        // Update AI plan with microcycle reference
-        const { currentPlan } = get();
-        if (!currentPlan) return;
-
-        const updatedPlan: AIPlan = {
+        // Store suggestion in AI plan (don't create workouts yet)
+        const updatedPlan = {
           ...currentPlan,
-          currentMicrocycle: {
-            id: microcycleData.id || `micro_${Date.now()}`,
-            week: request.weekNumber,
-            focus: microcycleData.focus,
-            value: microcycleData.value,
-            dateRange: request.weekDateRange,
-            workoutIds,
-            status: 'active'
-          },
-          status: 'active',
+          currentSuggestion: suggestion,
+          status: 'suggestion-pending' as const,
         };
 
         const planDocRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
@@ -632,6 +906,60 @@ export const useAICoachStore = create<AICoachState>()(
           error: error instanceof Error ? error.message : 'Failed to generate microcycle',
           generating: false 
         });
+      }
+    },
+
+    acceptSuggestedWorkouts: async (workoutIndexes: number[]) => {
+      const { currentPlan } = get();
+      const authStore = useAuthStore.getState();
+      const { user } = authStore;
+      const workoutsStore = useWorkoutsStore.getState();
+      
+      if (!user || !currentPlan || !currentPlan.currentSuggestion) {
+        set({ error: 'No suggestion to accept' });
+        return;
+      }
+
+      try {
+        const { currentSuggestion } = currentPlan;
+        
+        // Create WorkoutDocuments for accepted workouts
+        for (const index of workoutIndexes) {
+          const suggestion = currentSuggestion.suggestedWorkouts[index];
+          if (!suggestion) continue;
+
+          // Store normalized AI suggestion for preservation
+          const originalExercises = JSON.parse(JSON.stringify(suggestion.exercises)); // Deep copy
+          
+          await workoutsStore.addWorkout({
+            name: suggestion.name,
+            date: suggestion.date,
+            dayOfWeek: suggestion.dayOfWeek,
+            type: suggestion.type,
+            focus: suggestion.focus,
+            value: suggestion.value,
+            exercises: suggestion.exercises,
+            estimatedDuration: suggestion.estimatedDuration,
+            checkIns: { greenFlags: [], redFlags: [] },
+            source: 'ai-coach',
+            status: 'planned',
+            aiCoachContext: {
+              microcycleId: `micro_${Date.now()}`,
+              weekNumber: 1 // TODO: Get actual week number from context
+            },
+            originalAISuggestion: {
+              exercises: originalExercises,
+              createdAt: new Date().toISOString()
+            },
+            hasManualChanges: false
+          });
+        }
+        
+        console.log(`✅ Accepted ${workoutIndexes.length} suggested workout(s)`);
+      } catch (error) {
+        console.error('❌ Accept suggested workouts error:', error);
+        set({ error: error instanceof Error ? error.message : 'Failed to accept workouts' });
+        throw error;
       }
     },
 
@@ -664,44 +992,33 @@ export const useAICoachStore = create<AICoachState>()(
       const { currentPlan } = get();
       const authStore = useAuthStore.getState();
       const { user } = authStore;
-      const workoutsStore = useWorkoutsStore.getState();
       
-      if (!user || !currentPlan || !currentPlan.currentMicrocycle) return;
+      if (!user || !currentPlan) return;
 
       try {
         set({ generating: true });
         
-        // Smart deletion: Preserve workouts that user has started
-        for (const workoutId of currentPlan.currentMicrocycle.workoutIds) {
-          const workout = workoutsStore.workouts.find(w => w.id === workoutId);
-          if (!workout) {
-            continue;
-          }
-          
-          // Check if user has made any progress on this workout
-          const hasProgress = 
-            // User marked at least one set as complete
-            workout.exercises.some(ex => ex.sets.some(set => set.completed === true)) ||
-            // User manually changed the workout structure
-            workout.hasManualChanges === true ||
-            // Workout is already completed
-            workout.status === 'completed';
-          
-          if (hasProgress) {
-            // PRESERVE: Detach from microcycle but keep the workout
-            await workoutsStore.updateWorkout(workoutId, {
-              aiCoachContext: undefined // Remove microcycle association
-            });
-          } else {
-            // DELETE: User hasn't touched this workout, safe to delete
-            await workoutsStore.deleteWorkout(workoutId);
-          }
-        }
+        // NEW SYSTEM: No workouts to delete - suggestions haven't been accepted yet
+        // Just regenerate with context from current suggestion
 
         // Get user profile
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         const userData = userDoc.exists() ? userDoc.data() : {};
         const userProfile = userData.profile || {};
+
+        // Calculate week date range
+        const weekDateRange = currentPlan.currentSuggestion?.weekDateRange || calculateInitialWeekRange(new Date());
+        
+        // Build custom feedback with current suggestions as context
+        let contextualFeedback = feedback;
+        if (currentPlan.currentSuggestion) {
+          const suggestionContext = `\n\nPrevious suggestions:\n${
+            currentPlan.currentSuggestion.suggestedWorkouts
+              .map((w, i) => `${i + 1}. ${w.name} (${w.date}) - ${w.exercises.length} exercises`)
+              .join('\n')
+          }\n\nAI Assessment: ${currentPlan.currentSuggestion.assessment}`;
+          contextualFeedback = (feedback || 'Please provide new suggestions') + suggestionContext;
+        }
 
         // Regenerate with feedback
         const request: MicrocycleGenerationRequest = {
@@ -709,9 +1026,9 @@ export const useAICoachStore = create<AICoachState>()(
           macrocycleGoal: currentPlan.macrocycleGoal,
           mesocycleMilestones: currentPlan.mesocycleMilestones,
           currentDate: new Date().toISOString(),
-          weekNumber: currentPlan.currentMicrocycle.week,
-          weekDateRange: currentPlan.currentMicrocycle.dateRange,
-          customFeedback: feedback,
+          weekNumber: 1, // Always week 1 for suggestions
+          weekDateRange,
+          customFeedback: contextualFeedback,
         };
 
         await get().generateMicrocycle(request);

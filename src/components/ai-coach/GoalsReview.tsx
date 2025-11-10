@@ -5,7 +5,9 @@
 
 import { useState, useEffect } from 'react';
 import type { AIPlan, MacrocycleGoal, MesocycleMilestone } from '@/types/aiCoach';
+import type { CustomPromptConfig } from '@/types/profile';
 import { useAICoachStore } from '@/stores/aiCoachStore';
+import { useAuthStore } from '@/stores/authStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,8 +18,12 @@ import {
   RotateCcw, 
   ArrowLeft,
   AlertCircle,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react';
+import { PromptEditor } from './PromptEditor';
+import { getValue, fetchAndActivate } from 'firebase/remote-config';
+import { remoteConfig } from '@/lib/firebase';
 
 interface GoalsReviewProps {
   plan: AIPlan;
@@ -158,7 +164,19 @@ function goalsToText(macrocycle: MacrocycleGoal, mesocycles: MesocycleMilestone[
  * Goals review component with direct text editing
  */
 export function GoalsReview({ plan, onBack }: GoalsReviewProps) {
-  const { approveGoals, regenerateGoals, updateGoals, generating, error, clearError } = useAICoachStore();
+  const { user } = useAuthStore();
+  const { 
+    approveGoals, 
+    generateGoals,
+    updateGoals, 
+    generating, 
+    error, 
+    clearError,
+    customGoalsPrompt,
+    saveCustomGoalsPrompt,
+    resetGoalsPromptToDefault,
+    loading
+  } = useAICoachStore();
   
   // Convert initial plan to text format
   const [goalsText, setGoalsText] = useState(() => 
@@ -168,6 +186,32 @@ export function GoalsReview({ plan, onBack }: GoalsReviewProps) {
   
   const [showRegenerate, setShowRegenerate] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [defaultPrompt, setDefaultPrompt] = useState<CustomPromptConfig | null>(null);
+  const [editingPrompt, setEditingPrompt] = useState<CustomPromptConfig | null>(null);
+  
+  // Load default prompt
+  useEffect(() => {
+    const loadDefaultPrompt = async () => {
+      try {
+        await fetchAndActivate(remoteConfig);
+        const promptValue = getValue(remoteConfig, 'prompts_ai_coach_goals_generation');
+        const promptString = promptValue.asString();
+        
+        if (promptString) {
+          const promptConfig = JSON.parse(promptString);
+          const prompt = {
+            systemPrompt: promptConfig.system_prompt,
+            userPromptTemplate: promptConfig.user_prompt_template
+          };
+          setDefaultPrompt(prompt);
+          setEditingPrompt(customGoalsPrompt || prompt);
+        }
+      } catch (error) {
+        console.error('Failed to load default prompt:', error);
+      }
+    };
+    loadDefaultPrompt();
+  }, [customGoalsPrompt]);
   
   // Update text when plan changes (e.g., after regeneration)
   useEffect(() => {
@@ -208,11 +252,30 @@ export function GoalsReview({ plan, onBack }: GoalsReviewProps) {
   };
 
   const handleRegenerate = async () => {
-    if (!feedback.trim()) return;
+    if (!user?.profile) return;
     
-    await regenerateGoals(feedback);
+    // Build request with feedback
+    const request = {
+      userProfile: user.profile,
+      fitnessGoalInput: user.profile.goals || '',
+      customInput: feedback.trim() ? `Previous goals feedback: ${feedback}\n\nPlease regenerate goals taking this feedback into account.` : '',
+      currentDate: new Date().toISOString(),
+    };
+    
+    // Generate with custom prompt if edited
+    await generateGoals(request, editingPrompt || undefined);
     setFeedback('');
     setShowRegenerate(false);
+  };
+  
+  const handlePromptSaved = async (prompt: CustomPromptConfig) => {
+    await saveCustomGoalsPrompt(prompt);
+    setEditingPrompt(prompt);
+  };
+
+  const handlePromptReset = async () => {
+    await resetGoalsPromptToDefault();
+    setEditingPrompt(defaultPrompt);
   };
 
   return (
@@ -283,35 +346,102 @@ export function GoalsReview({ plan, onBack }: GoalsReviewProps) {
       </Card>
 
       {/* Regenerate Section */}
-      {showRegenerate && (
-        <Card className="border-orange-200 dark:border-orange-900">
-          <CardHeader>
-            <CardTitle className="text-base">Provide Feedback for Regeneration</CardTitle>
-            <CardDescription>
-              Tell the AI what you'd like to change about these goals
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Textarea
-              placeholder="e.g., Focus more on strength than cardio, Make the timeline shorter, Include specific body part goals..."
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              rows={4}
-              className="resize-none"
-            />
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowRegenerate(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleRegenerate}
-                disabled={!feedback.trim() || generating}
-              >
-                {generating ? 'Regenerating...' : 'Regenerate with Feedback'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {showRegenerate && editingPrompt && defaultPrompt && (
+        <div className="space-y-6 border-2 border-orange-300 dark:border-orange-700 rounded-lg p-6 bg-orange-50/30 dark:bg-orange-950/20">
+          {/* Header */}
+          <div>
+            <h2 className="text-xl font-bold flex items-center space-x-2">
+              <RotateCcw className="h-5 w-5" />
+              <span>Regenerate Goals</span>
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Customize the prompt and add feedback to regenerate your goals
+            </p>
+          </div>
+          
+          {/* Previous Goals Context */}
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Context:</strong> Your current goals will be used as context for regeneration. Add feedback below to guide changes.
+            </AlertDescription>
+          </Alert>
+          
+          {/* Feedback Input */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Your Feedback</CardTitle>
+              <CardDescription>
+                Describe what you want to change about your current goals (optional but recommended)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                placeholder="e.g., 'Focus more on strength than cardio', 'Make the timeline shorter', 'I want to target specific muscle groups'..."
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                rows={6}
+                className="resize-none"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                This feedback will be included in the prompt to guide AI regeneration
+              </p>
+            </CardContent>
+          </Card>
+          
+          {/* Prompt Editor - Fully Visible */}
+          <PromptEditor
+            title="AI Regeneration Prompt"
+            description="This prompt will be used to regenerate your goals. It includes your current goals as context."
+            initialPrompt={editingPrompt}
+            availablePlaceholders={[
+              { placeholder: 'USER_PROFILE', description: 'Complete user profile data' },
+              { placeholder: 'FITNESS_GOAL_INPUT', description: 'User\'s fitness goal from profile' },
+              { placeholder: 'CUSTOM_INPUT', description: 'Your feedback + context about previous goals', example: 'Includes current goals and your feedback' },
+              { placeholder: 'CURRENT_DATE', description: 'Current date (ISO format)' }
+            ]}
+            populatedData={user?.profile ? {
+              USER_PROFILE: JSON.stringify(user.profile, null, 2),
+              FITNESS_GOAL_INPUT: user.profile.goals || 'Not set',
+              CUSTOM_INPUT: `Previous Goals:\nMacro: ${plan.macrocycleGoal.name}\nMesocycles: ${plan.mesocycleMilestones.map(m => m.name).join(', ')}\n\nFeedback: ${feedback || 'Not provided'}`,
+              CURRENT_DATE: new Date().toISOString()
+            } : undefined}
+            onSave={handlePromptSaved}
+            onReset={handlePromptReset}
+            loading={loading}
+          />
+          
+          {/* Action Buttons */}
+          <div className="flex justify-end space-x-2 pt-4 border-t">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowRegenerate(false);
+                setFeedback('');
+              }}
+              disabled={generating}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleRegenerate}
+              disabled={generating}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Regenerate Goals Now
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Action Buttons */}

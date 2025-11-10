@@ -54,6 +54,14 @@ export interface UserProfile {
   [fieldId: string]: ProfileFieldValue;
 }
 
+/**
+ * Custom prompt configuration for AI Coach
+ */
+export interface CustomPromptConfig {
+  systemPrompt: string;
+  userPromptTemplate: string;
+}
+
 export interface UserData {
   uid: string;
   email: string;
@@ -64,6 +72,10 @@ export interface UserData {
   theme: 'light' | 'dark' | 'system';
   createdAt: Date;
   updatedAt: Date;
+  
+  // AI Coach custom prompts
+  customGoalsPrompt?: CustomPromptConfig;
+  customMicrocyclePrompt?: CustomPromptConfig;
 }
 
 /**

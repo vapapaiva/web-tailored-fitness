@@ -7,7 +7,6 @@ import { useState, useEffect } from 'react';
 import type { WorkoutDocument } from '@/types/workout';
 import type { Workout } from '@/types/fitness';
 import { useWorkoutsStore } from '@/stores/workoutsStore';
-import { useAICoachStore } from '@/stores/aiCoachStore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,7 +43,6 @@ export function WorkoutExecutionDialog({
   onComplete 
 }: WorkoutExecutionDialogProps) {
   const { updateWorkout, deleteWorkout, markAsComplete, markAsIncomplete, workouts } = useWorkoutsStore();
-  const { currentPlan: aiPlan, loadPlan: loadAIPlan } = useAICoachStore();
   
   // UI state
   const [activeTab, setActiveTab] = useState<'ui' | 'text'>('ui');
@@ -63,13 +61,6 @@ export function WorkoutExecutionDialog({
     dayOfWeek: workout.dayOfWeek || 0,
   }));
 
-  // Load AI plan if this is an AI Coach workout (for validation)
-  useEffect(() => {
-    if (latestWorkoutFromStore.source === 'ai-coach' && !aiPlan) {
-      console.log('[WorkoutExecution] Loading AI plan for validation');
-      loadAIPlan();
-    }
-  }, [latestWorkoutFromStore.source, aiPlan, loadAIPlan]);
 
   // Sync with store updates
   useEffect(() => {
@@ -214,45 +205,7 @@ export function WorkoutExecutionDialog({
     // Clear previous errors
     setDateError('');
     
-    console.log('[DateChange] Validating date change:', {
-      newDate,
-      source: latestWorkoutFromStore.source,
-      hasContext: !!latestWorkoutFromStore.aiCoachContext,
-      hasPlan: !!aiPlan?.currentMicrocycle,
-      microcycleId: latestWorkoutFromStore.aiCoachContext?.microcycleId,
-      planMicrocycleId: aiPlan?.currentMicrocycle?.id
-    });
-    
-    // Validate date is within microcycle range for AI Coach workouts
-    if (latestWorkoutFromStore.source === 'ai-coach' && latestWorkoutFromStore.aiCoachContext) {
-      // For AI Coach workouts, ALWAYS validate against microcycle range
-      if (aiPlan?.currentMicrocycle) {
-        // Workout belongs to current microcycle - validate strictly
-        if (latestWorkoutFromStore.aiCoachContext.microcycleId === aiPlan.currentMicrocycle.id) {
-          const { start, end } = aiPlan.currentMicrocycle.dateRange;
-          
-          console.log('[DateChange] Validating against microcycle range:', { start, end, newDate });
-          
-          if (newDate && (newDate < start || newDate > end)) {
-            console.log('[DateChange] VALIDATION FAILED - Date outside range');
-            // Show inline error instead of alert
-            setDateError(`Date must be within microcycle range: ${start} to ${end}`);
-            // Reset to current value - DON'T allow the change
-            setDateString(latestWorkoutFromStore.date || '');
-            return; // EXIT - don't update
-          }
-        } else {
-          // Workout from old microcycle - more lenient but still warn
-          console.log('[DateChange] Workout from old microcycle, allowing change');
-        }
-      } else {
-        // No current microcycle loaded, but it's an AI workout - be cautious
-        console.warn('[DateChange] AI workout but no microcycle loaded - preventing change as safety measure');
-        setDateError('Cannot change date: AI Coach plan not loaded');
-        setDateString(latestWorkoutFromStore.date || '');
-        return;
-      }
-    }
+    // AI Coach workouts can now be moved to any date (no restrictions)
     
     console.log('[DateChange] Validation passed, updating date');
     setDateString(newDate);
@@ -274,11 +227,7 @@ export function WorkoutExecutionDialog({
   };
 
   const handleClearDate = () => {
-    // Prevent clearing date for AI Coach workouts
-    if (latestWorkoutFromStore.source === 'ai-coach' && latestWorkoutFromStore.aiCoachContext) {
-      setDateError('AI Coach workouts must have a date to stay aligned with your training plan');
-      return;
-    }
+    // AI Coach workouts can now have their date cleared (no restrictions)
     handleDateChange('');
   };
 
@@ -438,7 +387,8 @@ export function WorkoutExecutionDialog({
                 if (field === 'reps') updatedSet.reps = value;
                 if (field === 'weight') updatedSet.weight = value;
                 if (field === 'duration') updatedSet.duration = value * 60;
-                updatedSet.volumeRowId = `individual-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                // Keep the existing volumeRowId - DON'T create a new one
+                // This ensures sets stay grouped together in volume rows
                 return updatedSet;
               }
               return set;
@@ -512,7 +462,7 @@ export function WorkoutExecutionDialog({
                     onChange={(e) => handleDateChange(e.target.value)}
                     className={`text-sm flex-1 max-w-[200px] ${dateError ? 'border-red-500' : ''}`}
                   />
-                  {dateString && !latestWorkoutFromStore.aiCoachContext && (
+                  {dateString && (
                     <Button
                       type="button"
                       variant="ghost"
@@ -526,14 +476,6 @@ export function WorkoutExecutionDialog({
                   )}
                 </div>
                 
-                {/* Proactive info for AI Coach workouts */}
-                {latestWorkoutFromStore.source === 'ai-coach' && aiPlan?.currentMicrocycle && (
-                  <p className="text-xs text-purple-600 dark:text-purple-400 flex items-center gap-1">
-                    <Info className="h-3 w-3" />
-                    AI Coach workout • Must stay within {aiPlan.currentMicrocycle.dateRange.start} to {aiPlan.currentMicrocycle.dateRange.end}
-                  </p>
-                )}
-                
                 {/* Error message */}
                 {dateError && (
                   <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
@@ -544,27 +486,14 @@ export function WorkoutExecutionDialog({
               </div>
             </div>
             
-            {/* Delete Button with Info */}
-            <div className="flex flex-col items-end gap-1">
-              <Button 
-                variant="destructive" 
-                size="sm" 
-                onClick={handleDeleteWorkout}
-                disabled={latestWorkoutFromStore.source === 'ai-coach' && !!latestWorkoutFromStore.aiCoachContext}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-              {latestWorkoutFromStore.source === 'ai-coach' && latestWorkoutFromStore.aiCoachContext && (
-                <p className="text-xs text-muted-foreground">
-                  AI workouts can't be deleted
-                </p>
-              )}
-              {latestWorkoutFromStore.source === 'ai-coach' && !latestWorkoutFromStore.aiCoachContext && (
-                <p className="text-xs text-muted-foreground text-green-600 dark:text-green-400">
-                  Detached from plan
-                </p>
-              )}
-            </div>
+            {/* Delete Button */}
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={handleDeleteWorkout}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </DialogTitle>
         </DialogHeader>
 

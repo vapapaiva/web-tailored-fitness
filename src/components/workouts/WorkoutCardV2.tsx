@@ -274,8 +274,7 @@ export const WorkoutCardV2 = React.memo(function WorkoutCardV2({
               )}
               
               {/* Delete Button - shown on hover only */}
-              {/* AI Coach workouts can only be deleted if detached (no aiCoachContext) */}
-              {onDelete && isHovered && !(workout.source === 'ai-coach' && workout.aiCoachContext) && (
+              {onDelete && isHovered && (
                 <Button
                   size="sm"
                   variant="ghost"
