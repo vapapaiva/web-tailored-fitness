@@ -30,8 +30,6 @@ interface FitnessGoalsCardProps {
 export function FitnessGoalsCard({ plan }: FitnessGoalsCardProps) {
   const { user } = useAuthStore();
   const { 
-    dismissRegenerationSuggestion, 
-    regenerateMicrocycle, 
     generateGoals,
     generating,
     loading,
@@ -41,9 +39,7 @@ export function FitnessGoalsCard({ plan }: FitnessGoalsCardProps) {
   } = useAICoachStore();
   const [showEditor, setShowEditor] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showRegenerateFeedback, setShowRegenerateFeedback] = useState(false);
   const [showRegenerateGoalsDialog, setShowRegenerateGoalsDialog] = useState(false);
-  const [weekFeedback, setWeekFeedback] = useState('');
   const [goalsFeedback, setGoalsFeedback] = useState('');
   const [defaultPrompt, setDefaultPrompt] = useState<CustomPromptConfig | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<CustomPromptConfig | null>(null);
@@ -84,73 +80,6 @@ export function FitnessGoalsCard({ plan }: FitnessGoalsCardProps) {
 
   return (
     <div className="space-y-4">
-      {/* Regeneration Suggestion Banner */}
-      {plan.showRegenerationSuggestion && !showRegenerateFeedback && (
-        <Alert>
-          <Info className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between">
-            <span>
-              Your goals have changed. Would you like to regenerate the current week to match your new goals?
-            </span>
-            <div className="flex items-center space-x-2">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => dismissRegenerationSuggestion()}
-              >
-                <X className="h-4 w-4 mr-1" />
-                Dismiss
-              </Button>
-              <Button 
-                size="sm"
-                onClick={() => setShowRegenerateFeedback(true)}
-              >
-                Regenerate Week
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-      
-      {/* Regenerate Week Feedback Input */}
-      {showRegenerateFeedback && (
-        <Alert>
-          <RotateCcw className="h-4 w-4" />
-          <AlertDescription className="space-y-3">
-            <p className="font-medium">Regenerate Current Week</p>
-            <Textarea
-              placeholder="Optional: Add feedback for regeneration (e.g., more upper body focus, less cardio...)"
-              value={weekFeedback}
-              onChange={(e) => setWeekFeedback(e.target.value)}
-              rows={3}
-            />
-            <div className="flex justify-end space-x-2">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => {
-                  setShowRegenerateFeedback(false);
-                  setWeekFeedback('');
-                }}
-              >
-                Cancel
-              </Button>
-              <Button 
-                size="sm"
-                onClick={async () => {
-                  await regenerateMicrocycle(weekFeedback);
-                  setShowRegenerateFeedback(false);
-                  setWeekFeedback('');
-                }}
-              >
-                Regenerate Week
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-      
-
       {/* Goals Card */}
       <Card>
         <CardHeader>

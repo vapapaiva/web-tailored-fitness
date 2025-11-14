@@ -49,11 +49,11 @@ interface AICoachState {
   approveGoals: () => Promise<void>;
   updateGoals: (updates: Partial<Pick<AIPlan, 'macrocycleGoal' | 'mesocycleMilestones'>>) => Promise<void>;
   regenerateGoals: (feedback: string) => Promise<void>;
-  dismissRegenerationSuggestion: () => Promise<void>;
   
   // Phase 2: Workout Generation (suggestions-based)
   generateMicrocycle: (request: MicrocycleGenerationRequest) => Promise<void>;
   acceptSuggestedWorkouts: (workoutIndexes: number[]) => Promise<void>;
+  clearCurrentSuggestion: () => Promise<void>;
   approveMicrocycle: () => Promise<void>;
   regenerateMicrocycle: (feedback: string) => Promise<void>;
   
@@ -467,14 +467,12 @@ export const useAICoachStore = create<AICoachState>()(
           ...currentPlan,
           ...updates,
           goalsLastModified: new Date().toISOString(),
-          showRegenerationSuggestion: true, // Show banner to regenerate workouts
         };
 
         const planDocRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
         await updateDoc(planDocRef, {
           ...updates,
           goalsLastModified: serverTimestamp(),
-          showRegenerationSuggestion: true,
           updatedAt: serverTimestamp(),
         });
 
@@ -544,31 +542,6 @@ export const useAICoachStore = create<AICoachState>()(
           error: error instanceof Error ? error.message : 'Failed to regenerate goals',
           generating: false 
         });
-      }
-    },
-
-    dismissRegenerationSuggestion: async () => {
-      const { currentPlan } = get();
-      const authStore = useAuthStore.getState();
-      const { user } = authStore;
-      
-      if (!user || !currentPlan) return;
-
-      try {
-        const planDocRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
-        await updateDoc(planDocRef, {
-          showRegenerationSuggestion: false,
-        });
-
-        set({ 
-          currentPlan: { 
-            ...currentPlan, 
-            showRegenerationSuggestion: false 
-          } 
-        });
-
-      } catch (error) {
-        console.error('❌ Dismiss suggestion error:', error);
       }
     },
 
@@ -960,6 +933,35 @@ export const useAICoachStore = create<AICoachState>()(
         console.error('❌ Accept suggested workouts error:', error);
         set({ error: error instanceof Error ? error.message : 'Failed to accept workouts' });
         throw error;
+      }
+    },
+
+    clearCurrentSuggestion: async () => {
+      const { currentPlan } = get();
+      const authStore = useAuthStore.getState();
+      const { user } = authStore;
+      
+      if (!user || !currentPlan) return;
+
+      try {
+        // Clear current suggestion from AI plan
+        const updatedPlan = {
+          ...currentPlan,
+          currentSuggestion: undefined,
+          status: 'goals-approved' as const, // Reset to goals-approved
+        };
+
+        const planDocRef = doc(db, 'users', user.uid, 'aiPlan', 'plan');
+        await updateDoc(planDocRef, {
+          currentSuggestion: null,
+          status: 'goals-approved',
+          updatedAt: serverTimestamp(),
+        });
+
+        set({ currentPlan: updatedPlan });
+        console.log('✅ Cleared current suggestion');
+      } catch (error) {
+        console.error('❌ Clear suggestion error:', error);
       }
     },
 

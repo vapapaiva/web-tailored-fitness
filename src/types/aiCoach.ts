@@ -91,7 +91,6 @@ export interface AIPlan {
   generationMetadata: GenerationMetadata;
   userFeedback: string[]; // History of user feedback for regenerations
   goalsLastModified?: string; // ISO timestamp of last manual goal edit
-  showRegenerationSuggestion?: boolean; // Show banner to regenerate workouts after manual goal edit
   
   // Timestamps
   createdAt: string; // ISO timestamp

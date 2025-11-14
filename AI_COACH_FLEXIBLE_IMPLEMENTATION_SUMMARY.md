@@ -148,48 +148,91 @@
 
 ---
 
-## 🐛 Additional Fixes Applied
+## 🐛 Additional Fixes Applied (8 Fixes Beyond Plan)
 
 ### Fix 1: Profile Preview Truncation
 - **Issue:** Profile showed as "{ ... }" with truncation
-- **Fix:** Removed `.substring(0, 200)` limitation
+- **Fix:** Removed `.substring(0, 200)` limitation - show full JSON
 - **File:** `src/components/ai-coach/GoalsGenerationFlow.tsx`
 
 ### Fix 2: Goals Regeneration from Dashboard
-- **Issue:** Simple textarea without prompt editing
-- **Fix:** Full Dialog with PromptEditor component
+- **Issue:** Simple textarea without prompt editing, goals deleted instead of regenerated
+- **Fix:** 
+  1. Full Dialog with PromptEditor component
+  2. Include previous goals context in customInput
+  3. Proper generateGoals() call with context
 - **File:** `src/components/ai-coach/FitnessGoalsCard.tsx`
 
 ### Fix 3: Prompt Editing Location
-- **Issue:** Separate step for prompt editing
-- **Fix:** Prompt editor on same screen as goals input
+- **Issue:** Separate step for prompt editing, preview couldn't show goals input
+- **Fix:** Prompt editor on same screen as goals input - real-time preview
 - **File:** `src/components/ai-coach/GoalsGenerationFlow.tsx`
 
 ### Fix 4: AI Returns "No Workouts Needed" When Empty
 - **Issue:** AI said "plan looks good" even with 0 workouts
 - **Fix:** 
-  - Updated prompt with clear instructions
-  - Dynamic instructions: "MUST suggest 3-5 workouts" when empty
-  - Enhanced system prompt for correct format
-  - Better response parsing (3 format support)
+  1. Dynamic instructions: "MUST suggest 3-5 workouts" when empty
+  2. Enhanced system prompt for correct format
+  3. Multi-format response parsing (3 formats)
+  4. Updated prompt JSON with assessment field
 - **Files:** `src/stores/aiCoachStore.ts`, `prompts_ai_coach_workout_generation.json`
 
 ### Fix 5: Import Errors
-- **Issue:** Missing `CardDescription` import
-- **Fix:** Added missing import
-- **File:** `src/components/ai-coach/FitnessGoalsCard.tsx`
+- **Issue:** Missing `CardDescription` import caused page crash
+- **Fix:** Added missing import + removed unused imports
+- **Files:** `src/components/ai-coach/FitnessGoalsCard.tsx`, `src/components/workouts/PlannedSection.tsx`
 
 ### Fix 6: AI Workouts Can't Be Deleted from Execution Dialog
-- **Issue:** Delete button disabled inside workout dialog
-- **Fix:** Removed all restrictions (5 places in WorkoutExecutionDialog)
+- **Issue:** Delete button disabled inside workout dialog with "can't delete" message
+- **Fix:** 
+  1. Removed disabled state from Delete button
+  2. Removed validation messages
+  3. Removed date change restrictions (26 lines)
+  4. Removed clear date restrictions
+- **Locations:** 7 places in `WorkoutExecutionDialog.tsx`
 - **File:** `src/components/workouts/WorkoutExecutionDialog.tsx`
 
 ### Fix 7: Volume Rows Split When Editing AI Workouts
-- **Issue:** Editing sets in AI workouts created separate volume rows
-- **Root Cause:** Line 390 was assigning new `volumeRowId` on every field update
-- **Fix:** Removed `volumeRowId` reassignment - keeps existing ID to maintain grouping
-- **Result:** AI workouts now edit exactly like manual workouts
-- **File:** `src/components/workouts/WorkoutExecutionDialog.tsx`
+- **Issue:** Editing reps/weight in AI workouts created separate volume rows
+- **Root Causes:**
+  1. `volumeRowUtils.ts` grouped sets by values (not just volumeRowId)
+  2. AI workouts had no volumeRowId assigned initially
+  3. handleUpdateSetField was reassigning new volumeRowId
+- **Fix:** 
+  1. Changed `getVolumeRows()` to group ONLY by volumeRowId (use averages for display)
+  2. Added smart volumeRowId assignment when creating AI suggestions (groups sets with same values)
+  3. Removed volumeRowId reassignment in handleUpdateSetField
+- **Result:** AI workouts edit exactly like manual workouts - no splitting
+- **Files:** `src/lib/volumeRowUtils.ts`, `src/stores/aiCoachStore.ts`, `src/components/workouts/WorkoutExecutionDialog.tsx`
+
+### Fix 8: Old Suggestions Show When Reopening Generation
+- **Issue:** After closing suggestions dialog, old suggestions showed next time user clicks "Generate"
+- **Root Cause:** `currentSuggestion` remained in AI plan after Done
+- **Expected Behavior:**
+  - User clicks Done → suggestions cleared
+  - Next generation → starts fresh (no old suggestions)
+  - Only accepted workouts remain (in Workouts page with `originalAISuggestion` preserved)
+- **Fix:**
+  1. Added `clearCurrentSuggestion()` action in aiCoachStore
+  2. Done button calls `clearCurrentSuggestion()` → removes from Firebase
+  3. X button also clears suggestions (user doesn't want old ones)
+  4. Track `lastGenerationTime` to show dialog ONLY for NEW suggestions
+  5. Clear customFeedback after generation
+- **Result:** Each generation is fresh, `originalAISuggestion` stays in workouts for restore
+- **Files:** `src/stores/aiCoachStore.ts`, `src/components/ai-coach/MicrocycleGenerationFlow.tsx`, `src/components/ai-coach/WorkoutSuggestionsDialog.tsx`
+
+### Fix 9: Legacy "Goals Changed" Banner Removed
+- **Issue:** Banner "Your goals have changed. Would you like to regenerate the current week?" no longer relevant
+- **Why Removed:** New system doesn't auto-create microcycles - user manually accepts suggestions
+- **Removed:**
+  1. Banner display logic from `FitnessGoalsCard.tsx`
+  2. "Regenerate Week" feedback input section
+  3. `showRegenerationSuggestion` field from `AIPlan` type
+  4. `dismissRegenerationSuggestion()` action from aiCoachStore
+  5. Setting `showRegenerationSuggestion: true` in `updateGoals()`
+  6. Related state variables (`showRegenerateFeedback`, `weekFeedback`)
+- **Kept:** "Regenerate Goals" button (different feature - regenerates goals, not week)
+- **Files:** `src/components/ai-coach/FitnessGoalsCard.tsx`, `src/stores/aiCoachStore.ts`, `src/types/aiCoach.ts`
 
 ---
 
@@ -200,17 +243,20 @@
   - `WorkoutSuggestionsDialog.tsx`
   - `AICoachStatistics.tsx`
 
-- **Files Modified:** 12
+- **Files Modified:** 13
   - Type definitions (2)
   - Stores (1)
   - AI Coach components (6)
   - Pages (2)
-  - Workout components (2)
+  - Workout components (3)
+  - Utilities (1)
   - Documentation (1)
 
-- **Total Lines Changed:** ~2000+
+- **Total Lines Changed:** ~2600+
 - **Linting Errors:** 0
 - **TypeScript Errors:** 0
+- **Bug Fixes:** 9 (beyond plan)
+- **Legacy Code Removed:** showRegenerationSuggestion system (~50 lines)
 
 ---
 

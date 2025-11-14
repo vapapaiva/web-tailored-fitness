@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 interface WorkoutSuggestionsDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  onDone: () => Promise<void>; // Called when user clicks Done (clears suggestions)
   suggestion: MicrocycleSuggestion;
   onAcceptWorkout: (index: number) => Promise<void>;
   onAcceptAll: () => Promise<void>;
@@ -31,6 +32,7 @@ interface WorkoutSuggestionsDialogProps {
 export function WorkoutSuggestionsDialog({
   isOpen,
   onClose,
+  onDone,
   suggestion,
   onAcceptWorkout,
   onAcceptAll,
@@ -311,9 +313,12 @@ export function WorkoutSuggestionsDialog({
 
           <Separator />
 
-          {/* Close Button */}
+          {/* Done Button */}
           <div className="flex justify-end">
-            <Button onClick={onClose}>
+            <Button onClick={async () => {
+              await onDone(); // Clear suggestions from AI plan
+              onClose(); // Close dialog
+            }}>
               Done
             </Button>
           </div>

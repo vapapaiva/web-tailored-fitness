@@ -40,6 +40,7 @@ export function MicrocycleGenerationFlow({ weekNumber, onClose }: MicrocycleGene
     customMicrocyclePrompt,
     generateMicrocycle,
     acceptSuggestedWorkouts,
+    clearCurrentSuggestion,
     saveCustomMicrocyclePrompt,
     resetMicrocyclePromptToDefault,
     clearError 
@@ -51,6 +52,7 @@ export function MicrocycleGenerationFlow({ weekNumber, onClose }: MicrocycleGene
   const [defaultPrompt, setDefaultPrompt] = useState<CustomPromptConfig | null>(null);
   const [editingPrompt, setEditingPrompt] = useState<CustomPromptConfig | null>(null);
   const [showSuggestionsDialog, setShowSuggestionsDialog] = useState(false);
+  const [lastGenerationTime, setLastGenerationTime] = useState<string | null>(null);
 
   // Load default prompt
   useEffect(() => {
@@ -76,16 +78,25 @@ export function MicrocycleGenerationFlow({ weekNumber, onClose }: MicrocycleGene
     loadDefaultPrompt();
   }, [customMicrocyclePrompt]);
 
-  // Show suggestions dialog when generation completes
+  // Show suggestions dialog ONLY when NEW generation completes
   useEffect(() => {
     if (currentPlan?.currentSuggestion && !generating) {
-      setShowSuggestionsDialog(true);
+      const suggestionTime = currentPlan.currentSuggestion.generated_at;
+      
+      // Only show dialog if this is a NEW suggestion (different from last time)
+      if (suggestionTime !== lastGenerationTime) {
+        setShowSuggestionsDialog(true);
+        setLastGenerationTime(suggestionTime);
+      }
     }
-  }, [currentPlan?.currentSuggestion, generating]);
+  }, [currentPlan?.currentSuggestion, generating, lastGenerationTime]);
 
   const handleGenerate = async () => {
     if (!user || !currentPlan) return;
 
+    // Clear custom feedback after generating
+    const feedbackToUse = customFeedback;
+    
     // Get user profile
     const userDoc = await getDoc(doc(db, 'users', user.uid));
     const userData = userDoc.exists() ? userDoc.data() : {};
@@ -101,10 +112,13 @@ export function MicrocycleGenerationFlow({ weekNumber, onClose }: MicrocycleGene
       currentDate: new Date().toISOString(),
       weekNumber: weekNumber || 1,
       weekDateRange,
-      customFeedback: customFeedback || undefined,
+      customFeedback: feedbackToUse || undefined,
     };
 
     await generateMicrocycle(request);
+    
+    // Clear feedback after successful generation
+    setCustomFeedback('');
   };
 
   const handlePromptSaved = async (prompt: CustomPromptConfig) => {
@@ -133,7 +147,17 @@ export function MicrocycleGenerationFlow({ weekNumber, onClose }: MicrocycleGene
     await handleGenerate();
   };
 
-  const handleCloseSuggestions = () => {
+  const handleDone = async () => {
+    // Clear suggestions from AI plan (user is done reviewing)
+    await clearCurrentSuggestion();
+    setShowSuggestionsDialog(false);
+    if (onClose) onClose();
+  };
+
+  const handleCloseSuggestions = async () => {
+    // Also clear suggestions when closing via X button
+    // User doesn't want to see old suggestions next time
+    await clearCurrentSuggestion();
     setShowSuggestionsDialog(false);
     if (onClose) onClose();
   };
@@ -314,6 +338,7 @@ export function MicrocycleGenerationFlow({ weekNumber, onClose }: MicrocycleGene
         <WorkoutSuggestionsDialog
           isOpen={showSuggestionsDialog}
           onClose={handleCloseSuggestions}
+          onDone={handleDone}
           suggestion={currentPlan.currentSuggestion}
           onAcceptWorkout={handleAcceptWorkout}
           onAcceptAll={handleAcceptAll}
